@@ -1,56 +1,66 @@
 import sys
 import time
+import sched
 import logging
-import socket
+import random
+import win32gui, win32ui, win32con, win32api
+
+from pyKey import pressKey, releaseKey, press, sendSequence, showKeys
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+buttons = ["z", "x", "c", "v", "UP", "RIGHT", "DOWN", "LEFT"]
+
+def release_all_buttons(emulator):
+    win32gui.SetForegroundWindow(emulator)
+    time.sleep(0.01)
+    for button in buttons:
+        releaseKey(button)
+
+def press_buttons(emulator, event):
+    print(emulator, event)
+    win32gui.SetForegroundWindow(ezxcmulator)
+    time.sleep(0.01)
+    for button in buttons:
+        if random.random() < 0.5:
+            pressKey(button)
+        else:
+            releaseKey(button)
+
 class FileChangeHandler(FileSystemEventHandler):
-    def __init__(self):
-        pass
+    def __init__(self, emulator):
+        self.emulator = emulator
 
     def on_created(self, event):
+        press_buttons(self.emulator, event)
+
+    def on_modified(self, event):
         print(event)
 
-    def on_changed(self, event):
-        print(event)
-
-def start_socket():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    port = 2222
-    server.bind((socket.gethostname(), port))
-    print("Hostname: %s Port: %d" % (socket.gethostname(), port))
-    server.listen(1)
-
-    while True:
-        print(f"Listening for connection on port {port}...")
-        (clientsocket, address) = server.accept()
-        print("Received client at %s" % (address,))
-        
-        try:
-            clientsocket.send("First message\n".encode())
-        
-            while True:
-                receive = clientsocket.recv(2048).decode('ascii')
-                print(receive)
-                clientsocket.send("Other messages\n".encode())
-        except Exception as e:
-            print("Exception occurred. Closing connection.")
-            print(e)
-            clientsocket.send(b"close")
-            clientsocket.close()
-    print('Done!')
+def find_all_windows(name):
+    result = []
+    def winEnumHandler(hwnd, ctx):
+        if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd) == name:
+            result.append(hwnd)
+    win32gui.EnumWindows(winEnumHandler, None)
+    return result
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
-    """
-    path = 'data/'
-    event_handler = FileChangeHandler()
 
+    path = 'data/'
+    emulator = find_all_windows("Super Mario World (USA) [SNES] - BizHawk")[0]
+    event_handler = FileChangeHandler(emulator)
     observer = Observer()
     observer.schedule(event_handler, path, recursive=True)
-    observer.start()"""
+    observer.start()
 
-    start_socket()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+
+    observer.join()
