@@ -3,6 +3,7 @@ id = 0
 
 FRAMES_PER_SCREENSHOT = 10
 STATE_FILE_NAME = "data/data_" .. time_stamp .. "/stateFile.csv"
+BUTTONS_FILE_NAME = "data/data_" .. time_stamp .. "/outputFile.csv"
 
 -- VARIOUS RAM LOCATIONS USED IN THIS FILE
 BYTE_RUN_GAME = 0x10				--1 BYTE
@@ -60,7 +61,7 @@ function writeStateToFile(id, controller_state, ...)
 
 	stateFile:write(id)
 	for i, value in ipairs(controller_state) do
-		stateFile:write(", " .. value)
+		stateFile:write("," .. value)
 	end
 	for i, value in ipairs(arg) do
 		stateFile:write(", " .. value)
@@ -70,55 +71,23 @@ function writeStateToFile(id, controller_state, ...)
 	io.close(stateFile)
 end
 
+function readButtonsFromFile()
+	local stateFile = io.open(BUTTONS_FILE_NAME, "r")
+end
+
 function setup()
 	--Make state file
 	os.execute("mkdir data")
 	os.execute("cd data && mkdir data_" .. time_stamp)
 
 	local stateFile = io.open(STATE_FILE_NAME, "w")
-	stateFile:write("id, A, B, X, Y, Up, Down, Left, Right, MarioX, MarioY, LevelID\n")
+	stateFile:write("id,A,B,X,Y,Up,Down,Left,Right,MarioX,MarioY,LevelID\n")
 	io.close(stateFile)
 
 	--Setup other stuff
 	frame_counter = mainmemory.read_u8(BYTE_EFFECTIVE_FRAME_COUNTER)
 	load_level = false
 end
-
---SETUP for client
-package.loaded.NNClient = nil
-local client = require("NNClient")
-
-function onExit()
-	forms.destroy(form)
-
-	client.close()
-end
-
-event.onexit(onExit)
-
-function connect()
-	if client.isConnected() then	
-		client.close()
-		forms.settext(connectButton, "NN Start")
-	else
-		client.connect(forms.gettext(hostnameBox))
-
-		if not client.isConnected() then
-			print("Unable to connect to local server")
-			return
-		else
-			print("Connected successfully.")
-		end
-
-		header = client.receiveHeader()
-		forms.settext(connectButton, "NN Stop")
-	end
-end
-
-form = forms.newform(195, 110, "Remote")
-hostnameBox = forms.textbox(form, "DESKTOP-QK4AJOE", 100, 20, "TEXT", 60, 10)
-forms.label(form, "Hostname:", 3, 13)
-connectButton = forms.button(form, "NN Start", connect, 3, 40)
 
 function checkInLevel()
 	--Update frame counter
@@ -147,18 +116,71 @@ function checkInLevel()
 	return bool_in_level
 end
 
+function split(inputstr, sep)
+	if sep == nil then
+			sep = "%s"
+	end
+	local t={}
+	for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+			table.insert(t, str)
+	end
+	return t
+end
+
+function getLastLine(inputstr)
+	t = split(inputstr, "\n")
+	return t[#t]
+end
+
+function readOutputFile()
+	local f = io.open(BUTTONS_FILE_NAME, "r")
+	f:seek("end", -100)
+
+	local text = f:read(100)
+	local lastLine = getLastLine(text)
+
+	f:close()
+
+	return lastLine
+end
+
+function isempty(s)
+	return s == nil or s == ''
+end
+
+function setController(line)
+	if not isempty(line) then
+		t = split(line, ',')
+		local controller = {}
+
+		for i=1, #ButtonNames do 
+			local button = "P1 " .. ButtonNames[i]
+
+			controller[button] = t[i + 1] == "1"
+		end
+
+		joypad.set(controller)
+	end
+end
+
 function mainLoop()
 	while true do
 		if checkInLevel() then
 			if id % FRAMES_PER_SCREENSHOT == 0 then
 				client.screenshot("data/data_" .. time_stamp .. "/screenshot_" .. id .. ".png")
 			end
-			id = id + 1
 		
 			controller_state = getController()
 			marioX, marioY = getPositions()
 
+			--update joystick#
+			lastOutput = readOutputFile()
+			setController(lastOutput)
+
+
 			writeStateToFile(id, controller_state, marioX, marioY, levelID)
+
+			id = id + 1
 		end
 		emu.frameadvance()
 	end
