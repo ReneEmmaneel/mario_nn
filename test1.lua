@@ -64,7 +64,7 @@ function writeStateToFile(id, controller_state, ...)
 		stateFile:write("," .. value)
 	end
 	for i, value in ipairs(arg) do
-		stateFile:write(", " .. value)
+		stateFile:write("," .. value)
 	end
 	stateFile:write("\n")
 
