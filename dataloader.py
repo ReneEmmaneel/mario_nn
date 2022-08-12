@@ -107,12 +107,16 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
     previous_actions_tensor = torch.stack(previous_actions, dim=0)
     return screenshot_tensor, previous_actions_tensor
 
-def create_dataloader(batch_size = 32, num_workers=1):
+def create_dataloader(batch_size = 32, num_workers=1, split=False):
     dataset = OfflineMarioDataset(verbose=False)
-    train_size = test_size = int(len(dataset) / 3)
-    val_size = len(dataset) - train_size - test_size
-    train_dataset, test_dataset, val_dataset = random_split(dataset, [train_size, test_size, val_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
-    return train_loader, test_loader, val_loader
+    if split:
+        val_size = test_size = int(len(dataset) / 4)
+        train_size = len(dataset) - val_size - test_size
+        train_dataset, test_dataset, val_dataset = random_split(dataset, [train_size, test_size, val_size])
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
+        return train_loader, test_loader, val_loader
+    else:
+        train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+        return train_loader

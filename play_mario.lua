@@ -74,7 +74,6 @@ function clearJoypad()
 end
 
 function setup()
-	print('setup')
 	--New file names for every timestep
 	time_stamp = os.time(os.date("!*t"))
 	id = 0

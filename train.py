@@ -22,6 +22,7 @@ class Module(pl.LightningModule):
         self.save_hyperparameters()
         self.model = BaseMarioModel(**model_hparams)
         self.loss_module = nn.MSELoss()
+        self.dataset_size = 0
 
     def configure_optimizers(self):
         optimizer = optim.SGD(self.parameters(), **self.hparams.optimizer_hparams)
@@ -30,36 +31,29 @@ class Module(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         *input, labels = batch
-
         preds = self.model(*input)
-        
 
-        loss = self.loss_module(preds, labels.reshape(-1, 1).float())
+        self.dataset_size += len(labels)
+        
+        labels = labels.reshape(-1, 1).float()
+        labels = nn.functional.sigmoid(labels)
+        loss = self.loss_module(preds, labels)
 
         # Log the accuracy per epoch to tensorboard (weighted average over batches)
-        self.log('train_loss', loss)
+        self.log('train_mse', loss, on_step=False, on_epoch=True)
         return loss  # Return tensor with computational graph attached
 
-    def validation_epoch_end(self, outputs):
-        acc = torch.mean(torch.stack(outputs))
+    def training_epoch_end(self, training_step_outputs):
+        self.log('dataset_size', self.dataset_size, on_epoch=True)
+        self.dataset_size = 0
 
-    def validation_step(self, batch, batch_idx):
-        *input, labels = batch
-        preds = self.model(*input)
-        loss = self.loss_module(preds, labels.reshape(-1, 1).float())
+    def train_dataloader(self):
+        #During training dataloader function, create a new dataset with only a train split
+        train_dataloader = dataloader.create_dataloader(
+                batch_size=args.batch_size, num_workers=args.num_workers, split=False)
+        return train_dataloader
 
-        self.log('val_mse', loss)
-    
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        *input, labels = batch
-        preds = self.model(*input)
-        loss = self.loss_module(preds, labels.reshape(-1, 1).float())
-
-        self.log('test_mse', loss)
-
-def train_model(train_dataloader, val_dataloader, test_dataloader, accelerator='gpu', devices=1, model_path='models', **kwargs):
+def train_model(accelerator='gpu', devices=1, model_path='models', **kwargs):
     """
     Inputs:
         train_dataloader - DataLoader for the training examples
@@ -73,43 +67,32 @@ def train_model(train_dataloader, val_dataloader, test_dataloader, accelerator='
     # Create a PyTorch Lightning trainer
     tb_logger = pl.loggers.TensorBoardLogger(save_dir=model_path, log_graph=False, default_hp_metric=None)
     trainer = pl.Trainer(default_root_dir=model_path, accelerator=accelerator, devices=devices,
-                         log_every_n_steps=2,
-                         callbacks=[ModelCheckpoint(save_weights_only=True, mode="min", monitor="val_mse")], #Only save best model
-                        logger=tb_logger)
+                         log_every_n_steps=2, reload_dataloaders_every_n_epochs=2,
+                         callbacks=[ModelCheckpoint(save_weights_only=True, mode="min", monitor="train_mse")], #Only save best model
+                         logger=tb_logger)
 
     # Create and fit the model
     model = Module(**kwargs)
-    trainer.fit(model, train_dataloader, val_dataloader)
+    trainer.fit(model)
     model = Module.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
 
-    # Test best model on validation and test set
-    test_result = trainer.test(model, dataloaders=test_dataloader, verbose=False)
-    val_result = trainer.test(model, dataloaders=val_dataloader, verbose=False)
-
-    return model, [test_result, val_result]
+    return model
 
 def main(args):
     #Set seed for reproducability, use seed of 0 to not set a seed
     if not args.seed == 0:
         pl.seed_everything(args.seed)
 
-    #Load word embeddings, dataloaders and vocab from said dataloaders
-    dataloaders = dataloader.create_dataloader(
-            batch_size=args.batch_size, num_workers=args.num_workers)
-
-    dataloader_train, dataloader_test, dataloader_evaluate = dataloaders
-
     model_hparams = {"t": 4}
 
     os.makedirs(args.model_path, exist_ok=True)
     baseline_model, baseline_results = train_model(
-            dataloader_train, dataloader_evaluate, dataloader_test,
             accelerator=args.accelerator, devices=args.devices,
             model_path = args.model_path,
             model_hparams=model_hparams,
             optimizer_hparams={"lr": 0.1})
 
-def get_next_input(module, input):
+def get_next_input(module, input, deterministic=True):
     screenshot_tensor, previous_actions_tensor = dataloader.input_to_tensors(input["screenshots"], input["previous_points"])
 
     #Make batch of size 64 for screenshot tensor
@@ -131,15 +114,18 @@ def get_next_input(module, input):
     #call model
     try:
         output = module.model(screenshot_tensor, actions_tensor)
-    except RuntimeError:
+    except RuntimeError as exc:
         print('Error during forward, probably caused by invalid input tensor sizes!')
         print('Screenshot tensor size:')
         print(screenshot_tensor.size())
         print('Action tensor size:')
         print(actions_tensor.size())
-        raise ValueError("Invalid arguments during model forward")
-    best_index = torch.argmax(output, dim=0)
-    return possible_actions[best_index].long().tolist()
+        raise ValueError("Invalid arguments during model forward") from exc
+    if deterministic:
+        output_index = torch.argmax(output.flatten()).item()
+    else:
+        output_index = torch.multinomial(output.flatten(), 1).item()
+    return possible_actions[output_index].long().tolist()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -149,9 +135,9 @@ if __name__ == '__main__':
                         help='seed used to use for setting the pseudo-random number generators, use 0 for no seed')
 
     # Training parameters
-    parser.add_argument('--batch_size', type=int, default=64,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='batch size used in training and evaluation')
-    parser.add_argument('--num_workers', type=int, default=8,
+    parser.add_argument('--num_workers', type=int, default=2, #Higher crashes it for some reason, might want to look into it...
                         help='amount of workers for creating the dataloader')
     parser.add_argument('--model_path', type=str, default='models',
                         help='directory for saving models')

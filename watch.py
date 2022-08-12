@@ -29,10 +29,17 @@ def add_output_to_file(filename, id, buttons):
     file.close()
 
 class FileChangeHandler(FileSystemEventHandler):
-    def __init__(self, model):
-        self.model = model
+    def __init__(self, model_checkpoint_folder):
+        self.model_checkpoint_folder = model_checkpoint_folder
+        self.iter = 0
+        self.load_model()
         self.dir_name = None
         self.prev_id = None
+
+    def load_model(self):
+        self.model_path, self.model = load_latest_model(self.model_checkpoint_folder)
+        self.iter += 1
+        print(f'Iteration {self.iter}\tLoaded model {self.model_path}\Deterministic: {self.iter%2==0}')
 
     def on_created(self, event):
         if event.is_directory:
@@ -41,6 +48,7 @@ class FileChangeHandler(FileSystemEventHandler):
                 file = open(output_file, 'w')
                 file.write("id,A,B,X,Y,Up,Down,Left,Right\n")
                 file.close()
+            self.load_model()
         else:
             event_file_name = event.src_path.split('\\')
 
@@ -81,12 +89,27 @@ class FileChangeHandler(FileSystemEventHandler):
                 #Add current frame
                 input["screenshots"].append(f"{event_file_name[0]}/screenshot_{id}.png")
 
-                next_inputs = train.get_next_input(self.model, input)
+                next_inputs = train.get_next_input(self.model, input, deterministic=self.iter%2==0)
 
                 add_output_to_file(output_file, id, next_inputs)
 
     def on_modified(self, event):
         pass
+
+def load_latest_model(folder_path):
+    ckpts = []
+    for file in os.listdir(folder_path):
+        if file.endswith(".ckpt"):
+            ckpts.append(file)
+    if len(ckpts) == 0:
+        return None
+
+    model_hparams = {"t": 4}
+    optimizer_hparams={"lr": 0.1}
+    model = Module(model_hparams, optimizer_hparams)
+    state_dict = torch.load(os.path.join(folder_path, ckpts[-1]))["state_dict"]
+    model.load_state_dict(state_dict)
+    return ckpts[-1], model
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
@@ -95,13 +118,9 @@ if __name__ == "__main__":
 
     path = 'data/'
 
-    model_hparams = {"t": 4}
-    optimizer_hparams={"lr": 0.1}
-    model = Module(model_hparams, optimizer_hparams)
-    state_dict = torch.load("models\\lightning_logs\\version_4\\checkpoints\\epoch=59-step=240.ckpt")["state_dict"]
-    model.load_state_dict(state_dict)
+    model_checkpoint_folder = "models\\lightning_logs\\version_0\\checkpoints"
 
-    event_handler = FileChangeHandler(model)
+    event_handler = FileChangeHandler(model_checkpoint_folder)
     observer = Observer()
     observer.schedule(event_handler, path, recursive=True)
     observer.start()
