@@ -1,3 +1,4 @@
+from ast import expr_context
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -128,7 +129,15 @@ def get_next_input(module, input):
     actions_tensor = torch.cat((previous_actions_tensor, possible_actions_tensor), dim=1)
     
     #call model
-    output = module.model(screenshot_tensor, actions_tensor)
+    try:
+        output = module.model(screenshot_tensor, actions_tensor)
+    except RuntimeError:
+        print('Error during forward, probably caused by invalid input tensor sizes!')
+        print('Screenshot tensor size:')
+        print(screenshot_tensor.size())
+        print('Action tensor size:')
+        print(actions_tensor.size())
+        raise ValueError("Invalid arguments during model forward")
     best_index = torch.argmax(output, dim=0)
     return possible_actions[best_index].long().tolist()
 

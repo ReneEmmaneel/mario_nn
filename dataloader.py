@@ -86,10 +86,13 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
     screenshot_tensors = []
     for screenshot_path in screenshots:
         if os.path.isfile(screenshot_path):
-            pic = plt.imread(screenshot_path)
-            pic = cv2.resize(pic, (64, 64))
-            pic_tensor = torch.from_numpy(pic)[:,:,:3]
-            screenshot_tensors.append(pic_tensor)
+            try:
+                pic = plt.imread(screenshot_path)
+                pic = cv2.resize(pic, (64, 64))
+                pic_tensor = torch.from_numpy(pic)[:,:,:3]
+                screenshot_tensors.append(pic_tensor)
+            except SyntaxError:
+                print(f'Error loading screenshot with path {screenshot_path}')
     if len(screenshot_tensors) == 0:
         raise NotImplementedError()
     while len(screenshot_tensors) < append_screenshots_to:

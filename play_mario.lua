@@ -1,9 +1,5 @@
-time_stamp = os.time(os.date("!*t"))
-id = 0
-
 FRAMES_PER_SCREENSHOT = 10
-STATE_FILE_NAME = "data/data_" .. time_stamp .. "/stateFile.csv"
-BUTTONS_FILE_NAME = "data/data_" .. time_stamp .. "/outputFile.csv"
+SAVE_STATE_FILE = "CustomState1.state"
 
 -- VARIOUS RAM LOCATIONS USED IN THIS FILE
 BYTE_RUN_GAME = 0x10				--1 BYTE
@@ -19,12 +15,6 @@ BYTE_LAYER1Y = 0x1C
 function getPositions()
 	local marioX = mainmemory.read_s16_le(BYTE_MARIO_X)
 	local marioY = mainmemory.read_s16_le(BYTE_MARIO_Y)
-
-	--local layer1x = mainmemory.read_s16_le(BYTE_LAYER1X);
-	--local layer1y = mainmemory.read_s16_le(BYTE_LAYER1Y);
-
-	--local screenX = marioX-layer1x
-	--local screenY = marioY-layer1y
 
 	return marioX, marioY
 end
@@ -75,7 +65,22 @@ function readButtonsFromFile()
 	local stateFile = io.open(BUTTONS_FILE_NAME, "r")
 end
 
+function clearJoypad()
+	controller = {}
+	for b = 1,#ButtonNames do
+		controller["P1 " .. ButtonNames[b]] = false
+	end
+	joypad.set(controller)
+end
+
 function setup()
+	print('setup')
+	--New file names for every timestep
+	time_stamp = os.time(os.date("!*t"))
+	id = 0
+	STATE_FILE_NAME = "data/data_" .. time_stamp .. "/stateFile.csv"
+	BUTTONS_FILE_NAME = "data/data_" .. time_stamp .. "/outputFile.csv"
+
 	--Make state file
 	os.execute("mkdir data")
 	os.execute("cd data && mkdir data_" .. time_stamp)
@@ -84,39 +89,24 @@ function setup()
 	stateFile:write("id,A,B,X,Y,Up,Down,Left,Right,MarioX,MarioY,LevelID\n")
 	io.close(stateFile)
 
+	--Go back to savestate
+	savestate.load(SAVE_STATE_FILE)
+	timeout = TimeoutConstant
+	clearJoypad()
+
 	--Setup other stuff
-	frame_counter = mainmemory.read_u8(BYTE_EFFECTIVE_FRAME_COUNTER)
 	load_level = false
 end
 
 function checkInLevel()
-	--Update frame counter
-	--If game mode is 0 (in level) and frame counter is running, return true
-	prev_frame_counter = frame_counter
-	frame_counter = mainmemory.read_u8(BYTE_EFFECTIVE_FRAME_COUNTER)
 	game_mode = mainmemory.read_u8(BYTE_GAME_MODE)
-
-	--if level_id is not 0, update it (this value only flashes at start of level)
 	check_levelID = mainmemory.read_u8(BYTE_LEVEL_ID)
-
-	bool_in_level = frame_counter == prev_frame_counter + 1 and game_mode == 0
-
-	--print(game_mode)
-
-	--update level id only at loading of the level
-	if check_levelID > 0 and load_level == false then
-		print(game_mode)
-		load_level = true
-		levelID = check_levelID
-		print('Load level ' .. levelID)
-	elseif check_levelID == 0 then
-		load_level = false
-	end
-
-	return bool_in_level
+	return game_mode == 0
 end
 
 function split(inputstr, sep)
+	--Helper function because lua does not have a split function for some reason
+	--returns table split based on character as given in sep
 	if sep == nil then
 			sep = "%s"
 	end
@@ -128,12 +118,16 @@ function split(inputstr, sep)
 end
 
 function getLastLine(inputstr)
+	--Return last line of a file
 	t = split(inputstr, "\n")
 	return t[#t]
 end
 
 function readOutputFile()
 	local f = io.open(BUTTONS_FILE_NAME, "r")
+	if f == nil then
+		return nil
+	end
 	f:seek("end", -100)
 
 	local text = f:read(100)
@@ -149,7 +143,7 @@ function isempty(s)
 end
 
 function setController(line)
-	if not isempty(line) then
+	if not isempty(line) and line ~= nil then
 		t = split(line, ',')
 		local controller = {}
 
@@ -181,10 +175,11 @@ function mainLoop()
 			writeStateToFile(id, controller_state, marioX, marioY, levelID)
 
 			id = id + 1
+		else
+			setup()
 		end
 		emu.frameadvance()
 	end
 end
 
-setup()
 mainLoop()

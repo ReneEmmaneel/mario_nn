@@ -31,6 +31,8 @@ def add_output_to_file(filename, id, buttons):
 class FileChangeHandler(FileSystemEventHandler):
     def __init__(self, model):
         self.model = model
+        self.dir_name = None
+        self.prev_id = None
 
     def on_created(self, event):
         if event.is_directory:
@@ -44,6 +46,21 @@ class FileChangeHandler(FileSystemEventHandler):
 
             if not event_file_name[1].split('.')[1] == "csv":
                 id = int(re.sub("[^0-9]", "", event_file_name[1]))
+
+                #Sometimes FIleSystemWatcher triggers twice, so check if new id is higher than previous id,
+                #or if it is a new directory (in that case, reset the previous id)
+                new_dir = False
+                if not event_file_name[0] == self.dir_name:
+                    new_dir = True
+                    self.prev_id = 0
+                self.dir_name = event_file_name[0]
+
+                if id <= self.prev_id:
+                    return #ignore false screenshot
+                else:
+                    self.prev_id = id
+
+
                 output_file = event_file_name[0] + "/outputFile.csv"
 
                 #Add previous 3 frames if possible
@@ -65,14 +82,6 @@ class FileChangeHandler(FileSystemEventHandler):
                 input["screenshots"].append(f"{event_file_name[0]}/screenshot_{id}.png")
 
                 next_inputs = train.get_next_input(self.model, input)
-
-                #buttons = []
-                #num = int(id/10)
-                #for _ in range(8):
-                #    bit = num % 2
-                #    buttons.append(int(bit))
-                #    num = num / 2
-                #buttons.reverse()
 
                 add_output_to_file(output_file, id, next_inputs)
 
