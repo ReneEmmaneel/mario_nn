@@ -35,6 +35,9 @@ class OfflineMarioDataset(Dataset):
             state_file = os.path.join(root, data, 'stateFile.csv')
             output_file = os.path.join(root, data, 'outputFile.csv')
 
+            if not os.path.isfile(state_file) or not os.path.isfile(output_file):
+                continue
+
             with open(output_file, newline='') as state_file_data:
                 reader = csv.DictReader(state_file_data, delimiter=',')
 
@@ -66,7 +69,8 @@ class OfflineMarioDataset(Dataset):
                         data_points[i]['current_state'] = row.copy()
                         i += 1
 
-            self.data.extend(data_points[:-1])
+            data_points_filtered = [item for item in data_points if "future_state" in item.keys()]
+            self.data.extend(data_points_filtered)
         if verbose:
             print(f'Created {len(self.data)} items in dataset')
 
@@ -94,7 +98,7 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
             except SyntaxError:
                 print(f'Error loading screenshot with path {screenshot_path}')
     if len(screenshot_tensors) == 0:
-        raise NotImplementedError()
+        screenshot_tensors.append(torch.zeros(64, 64, 3))
     while len(screenshot_tensors) < append_screenshots_to:
         screenshot_tensors.insert(0, screenshot_tensors[0])
     screenshot_tensor = torch.stack(screenshot_tensors, dim=0)
@@ -107,8 +111,10 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
     previous_actions_tensor = torch.stack(previous_actions, dim=0)
     return screenshot_tensor, previous_actions_tensor
 
-def create_dataloader(batch_size = 32, num_workers=1, split=False):
-    dataset = OfflineMarioDataset(verbose=False)
+def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/'):
+    dataset = OfflineMarioDataset(root=root, verbose=False)
+    if len(dataset) == 0:
+        return None
     if split:
         val_size = test_size = int(len(dataset) / 4)
         train_size = len(dataset) - val_size - test_size

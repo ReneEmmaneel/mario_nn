@@ -1,5 +1,5 @@
 FRAMES_PER_SCREENSHOT = 10
-SAVE_STATE_FILE = "CustomState1.state"
+SAVE_STATE_FILE = "savestates/CustomState1.state"
 
 -- VARIOUS RAM LOCATIONS USED IN THIS FILE
 BYTE_RUN_GAME = 0x10				--1 BYTE
@@ -74,15 +74,22 @@ function clearJoypad()
 end
 
 function setup()
+	--Checks for idling
+	prev_mario_x = nil
+	prev_mario_y = nil
+	idle_time = 0
+
 	--New file names for every timestep
 	time_stamp = os.time(os.date("!*t"))
 	id = 0
-	STATE_FILE_NAME = "data/data_" .. time_stamp .. "/stateFile.csv"
-	BUTTONS_FILE_NAME = "data/data_" .. time_stamp .. "/outputFile.csv"
+	STATE_FILE_NAME = "experiments/experiment_" .. experiment_id .. "/data/data_" .. time_stamp .. "/stateFile.csv"
+	BUTTONS_FILE_NAME = "experiments/experiment_" .. experiment_id .. "/data/data_" .. time_stamp .. "/outputFile.csv"
 
 	--Make state file
-	os.execute("mkdir data")
-	os.execute("cd data && mkdir data_" .. time_stamp)
+	os.execute("mkdir experiments")
+	os.execute("cd experiments && mkdir experiment_" .. experiment_id)
+	os.execute("cd experiments/experiment_" .. experiment_id .. " && mkdir data")
+	os.execute("cd experiments/experiment_" .. experiment_id .. "/data && mkdir data_" .. time_stamp)
 
 	local stateFile = io.open(STATE_FILE_NAME, "w")
 	stateFile:write("id,A,B,X,Y,Up,Down,Left,Right,MarioX,MarioY,LevelID\n")
@@ -99,8 +106,7 @@ end
 
 function checkInLevel()
 	game_mode = mainmemory.read_u8(BYTE_GAME_MODE)
-	check_levelID = mainmemory.read_u8(BYTE_LEVEL_ID)
-	return game_mode == 0
+	return game_mode == 0 or game_mode == 1
 end
 
 function split(inputstr, sep)
@@ -158,27 +164,71 @@ end
 
 function mainLoop()
 	while true do
-		if checkInLevel() then
-			if id % FRAMES_PER_SCREENSHOT == 0 then
-				client.screenshot("data/data_" .. time_stamp .. "/screenshot_" .. id .. ".png")
+		if do_run then
+			if checkInLevel() then
+				if id % FRAMES_PER_SCREENSHOT == 0 then
+					client.screenshot("experiments/experiment_" .. experiment_id .. "/data/data_" .. time_stamp .. "/screenshot_" .. id .. ".png")
+				end
+			
+				controller_state = getController()
+				marioX, marioY = getPositions()
+
+				--Update idle time
+				if marioX == prev_mario_x and marioY == prev_mario_y then
+					idle_time = idle_time + 1
+				else
+					idle_time = 0
+				end
+				prev_mario_x = marioX
+				prev_mario_y = marioY
+
+				--update joystick#
+				lastOutput = readOutputFile()
+				setController(lastOutput)
+
+
+				writeStateToFile(id, controller_state, marioX, marioY, levelID)
+
+				id = id + 1
+
+				--If mario is idle for 5 seconds, restart
+				if idle_time > 300 then
+					setup()
+				end
+			else
+				setup()
 			end
-		
-			controller_state = getController()
-			marioX, marioY = getPositions()
-
-			--update joystick#
-			lastOutput = readOutputFile()
-			setController(lastOutput)
-
-
-			writeStateToFile(id, controller_state, marioX, marioY, levelID)
-
-			id = id + 1
-		else
-			setup()
 		end
 		emu.frameadvance()
 	end
 end
 
+do_run = false
+function startExperiment()
+	experiment_id = tonumber(forms.gettext(form_exp_id))
+	if not do_run then
+		setup()
+		os.execute("start pythonw.exe watch.py -e " .. experiment_id)
+		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10")
+		forms.settext(form_start_button, "Stop")
+		do_run = true
+	else
+		os.execute("taskkill /IM pythonw.exe /F")
+		forms.settext(form_start_button, "Start")
+		do_run = false
+	end
+end
+
+function makeForm()
+	form = forms.newform(500, 500, "nn_mario")
+	form_welcome_message = forms.label(form, "Random label", 5, 8)
+	form_error_messages = forms.label(form, "", 5, 33)
+	
+	form_id_text = forms.label(form, "Experiment ID", 5, 58)
+	form_exp_id = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 58)
+	
+	form_start_button = forms.button(form, "Start", startExperiment, 120, 83, 100, 20)
+end
+
+makeForm()
 mainLoop()
