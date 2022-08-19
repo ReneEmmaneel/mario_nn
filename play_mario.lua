@@ -7,16 +7,19 @@ BYTE_EFFECTIVE_FRAME_COUNTER = 0x14	--1 BYTE
 BYTE_GAME_MODE = 0xD9B				--1 BYTE
 BYTE_LEVEL_ID = 0x17BB				--1 BYTE
 
+BYTE_MARIO_STATE = 0x71			--1 BYTE	possible values: https://www.smwcentral.net/?p=memorymap&game=smw&region=ram&address=7E0071&context=
+
 BYTE_MARIO_X = 0x94
 BYTE_MARIO_Y = 0x96
 BYTE_LAYER1X = 0x1A
 BYTE_LAYER1Y = 0x1C
 
-function getPositions()
+function getMarioState()
 	local marioX = mainmemory.read_s16_le(BYTE_MARIO_X)
 	local marioY = mainmemory.read_s16_le(BYTE_MARIO_Y)
+	local marioState = mainmemory.read_s8(BYTE_MARIO_STATE)
 
-	return marioX, marioY
+	return marioX, marioY, marioState
 end
 
 ButtonNames = {
@@ -92,7 +95,7 @@ function setup()
 	os.execute("cd experiments/experiment_" .. experiment_id .. "/data && mkdir data_" .. time_stamp)
 
 	local stateFile = io.open(STATE_FILE_NAME, "w")
-	stateFile:write("id,A,B,X,Y,Up,Down,Left,Right,MarioX,MarioY,LevelID\n")
+	stateFile:write("id,A,B,X,Y,Up,Down,Left,Right,MarioX,MarioY,MarioState\n")
 	io.close(stateFile)
 
 	--Go back to savestate
@@ -171,7 +174,7 @@ function mainLoop()
 				end
 			
 				controller_state = getController()
-				marioX, marioY = getPositions()
+				marioX, marioY, marioState = getMarioState()
 
 				--Update idle time
 				if marioX == prev_mario_x and marioY == prev_mario_y then
@@ -186,8 +189,7 @@ function mainLoop()
 				lastOutput = readOutputFile()
 				setController(lastOutput)
 
-
-				writeStateToFile(id, controller_state, marioX, marioY, levelID)
+				writeStateToFile(id, controller_state, marioX, marioY, marioState)
 
 				id = id + 1
 
@@ -213,6 +215,7 @@ function startExperiment()
 		forms.settext(form_start_button, "Stop")
 		do_run = true
 	else
+		os.execute("taskkill /IM python.exe /F")
 		os.execute("taskkill /IM pythonw.exe /F")
 		forms.settext(form_start_button, "Start")
 		do_run = false
@@ -221,13 +224,18 @@ end
 
 function makeForm()
 	form = forms.newform(500, 500, "nn_mario")
-	form_welcome_message = forms.label(form, "Random label", 5, 8)
-	form_error_messages = forms.label(form, "", 5, 33)
+
+	--Create form from bottom to top, because of z-index rendering issues
+	form_start_button = forms.button(form, "Start", startExperiment, 120, 125, 100, 20)
+	form_exp_id = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 100)
+	form_id_text = forms.label(form, "Experiment ID", 5, 100)
+
+	form_welcome_message1 = forms.label(form, "Note: all python.exe and pythonw.exe tasks will be killed when stopped.", 5, 53, 500, 25, false)
+	form_welcome_message1 = forms.label(form, "otherwise continue with previous data, but still train a new neural network.", 5, 38, 500, 25, false)
+	form_welcome_message2 = forms.label(form, "If experiment ID is set to a new value, start with zero amount of data and new neural network,", 5, 23, 500, 25, false)
+	form_welcome_message3 = forms.label(form, "Form for mario_neural_network to train and play Super Mario World!", 5, 8, 500, 25, false)
 	
-	form_id_text = forms.label(form, "Experiment ID", 5, 58)
-	form_exp_id = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 58)
 	
-	form_start_button = forms.button(form, "Start", startExperiment, 120, 83, 100, 20)
 end
 
 makeForm()

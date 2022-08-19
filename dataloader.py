@@ -30,6 +30,8 @@ where marioX_end is 10 frames after the last screenshot to determine the effect 
 class OfflineMarioDataset(Dataset):
     def __init__(self, root='data/', t=4, verbose=False):
         self.data = []
+        self.deltax_values = []
+
         for data in os.listdir(root):
             data_points = []
             state_file = os.path.join(root, data, 'stateFile.csv')
@@ -70,7 +72,19 @@ class OfflineMarioDataset(Dataset):
                         i += 1
 
             data_points_filtered = [item for item in data_points if "future_state" in item.keys()]
+
+            def get_value(item):
+                return int(item['future_state']['MarioX']) - int(item['current_state']['MarioX'])
+
+            data_points_filtered = [(input_to_tensors(x['screenshots'], x['previous_points'])) +  (get_value(x),) for x in data_points_filtered]
             self.data.extend(data_points_filtered)
+
+        for _, _, value in self.data:
+            if not value in self.deltax_values:
+                self.deltax_values.append(value)
+        self.deltax_values.sort()
+        print(self.deltax_values)
+
         if verbose:
             print(f'Created {len(self.data)} items in dataset')
 
@@ -80,10 +94,7 @@ class OfflineMarioDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
 
-        screenshot_tensor, previous_actions_tensor = input_to_tensors(item['screenshots'], item['previous_points'])
-
-        value = 0
-        value = int(item['future_state']['MarioX']) - int(item['current_state']['MarioX'])
+        screenshot_tensor, previous_actions_tensor, value = item
         return screenshot_tensor, previous_actions_tensor, value
 
 def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, append_previous_actions_to=3):
