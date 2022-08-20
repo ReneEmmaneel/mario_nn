@@ -39,8 +39,6 @@ class FileChangeHandler(FileSystemEventHandler):
         self.dir_name = None
         self.prev_id = None
         self.model = None
-        
-        self.load_model()
 
         #Other args
         self.reload_model_every_n_iterations = args.reload
@@ -57,7 +55,7 @@ class FileChangeHandler(FileSystemEventHandler):
             self.model.load_state_dict(state_dict)
             self.latest_model_file = model_file
 
-        print(f'Iteration {self.iter}\tLoaded model {self.latest_model_file}\tDeterministic: {self.iter%2==0}')
+        print(f'Iteration {self.iter}\tLoaded model {self.latest_model_file}\tDeterministic: True')
 
     def on_created(self, event):
         if event.is_directory:
@@ -108,7 +106,7 @@ class FileChangeHandler(FileSystemEventHandler):
                     #Add current frame
                     input["screenshots"].append(f"{event_dir_name}/screenshot_{id}.png")
 
-                    next_inputs = train.get_next_input(self.model, input, deterministic=self.iter%2==0)
+                    next_inputs = train.get_next_input(self.model, input, deterministic=True)
 
                     add_output_to_file(output_file, id, next_inputs)
                 else:
@@ -135,11 +133,12 @@ def get_latest_model(data_path, folder_path):
     return ckpts[-1]
 
 if __name__ == "__main__":
+    print('Running file watch.py')
     parser = argparse.ArgumentParser()
 
     # Experiment number, required!
     parser.add_argument('-e', '--experiment', type=int, required=True)
-    parser.add_argument('-r', '--reload', type=int, default=10)
+    parser.add_argument('-r', '--reload', type=int, default=2)
 
     args = parser.parse_args()
 

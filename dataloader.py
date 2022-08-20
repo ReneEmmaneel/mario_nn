@@ -1,17 +1,19 @@
 import datetime
 from doctest import UnexpectedException
 from genericpath import isfile
+from math import floor
 from operator import contains
 import time
 import os
 import sys
+from turtle import speed
 
 import numpy as np
 import torch
 import csv
 import cv2
 
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 from torchvision.utils import make_grid, save_image
 
 import matplotlib.pyplot as plt
@@ -30,7 +32,7 @@ where marioX_end is 10 frames after the last screenshot to determine the effect 
 class OfflineMarioDataset(Dataset):
     def __init__(self, root='data/', t=4, verbose=False):
         self.data = []
-        self.deltax_values = []
+        self.all_values = [range(-20, 40, 10)]
 
         for data in os.listdir(root):
             data_points = []
@@ -73,20 +75,24 @@ class OfflineMarioDataset(Dataset):
 
             data_points_filtered = [item for item in data_points if "future_state" in item.keys()]
 
-            def get_value(item):
-                return int(item['future_state']['MarioX']) - int(item['current_state']['MarioX'])
+            def get_values(item):
+                return [self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX']))]
 
-            data_points_filtered = [(input_to_tensors(x['screenshots'], x['previous_points'])) +  (get_value(x),) for x in data_points_filtered]
+            data_points_filtered = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points_filtered]
             self.data.extend(data_points_filtered)
-
-        for _, _, value in self.data:
-            if not value in self.deltax_values:
-                self.deltax_values.append(value)
-        self.deltax_values.sort()
-        print(self.deltax_values)
 
         if verbose:
             print(f'Created {len(self.data)} items in dataset')
+
+    def speed_to_encoding(self, value):
+        #range -inf to -16: 0
+        #       -15 to  -6: 1
+        #        -5 to   4: 2
+        #         5 to   4: 3
+        #        15 to inf: 4
+        speed_rounded = floor((value + 5) / 10) + 2
+        speed_rounded = max(0, min(speed_rounded, 4))
+        return speed_rounded
 
     def __len__(self):
         return len(self.data)
@@ -94,8 +100,10 @@ class OfflineMarioDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
 
-        screenshot_tensor, previous_actions_tensor, value = item
-        return screenshot_tensor, previous_actions_tensor, value
+        screenshot_tensor, previous_actions_tensor = item['input']
+        values = item['values']
+        
+        return screenshot_tensor, previous_actions_tensor, values[0]
 
 def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, append_previous_actions_to=3):
     screenshot_tensors = []
@@ -124,8 +132,11 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
 
 def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/'):
     dataset = OfflineMarioDataset(root=root, verbose=False)
+
     if len(dataset) == 0:
         return None
+
+
     if split:
         val_size = test_size = int(len(dataset) / 4)
         train_size = len(dataset) - val_size - test_size
@@ -135,5 +146,16 @@ def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/')
         val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
         return train_loader, test_loader, val_loader
     else:
-        train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+        labels = torch.tensor([t[2] for t in dataset])
+        class_sample_count = np.array([len(np.where(labels == t)[0]) for t in range(5)])
+        weight = 1. / class_sample_count
+        samples_weight = np.array([weight[t[2]] for t in dataset])
+
+        sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
+
+        train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, sampler=sampler)
         return train_loader
+
+if __name__ == '__main__':
+    dataloader = create_dataloader(root='experiments\experiment_4\data')
+    print(dataloader)

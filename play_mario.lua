@@ -81,6 +81,7 @@ function setup()
 	prev_mario_x = nil
 	prev_mario_y = nil
 	idle_time = 0
+	alive = false
 
 	--New file names for every timestep
 	time_stamp = os.time(os.date("!*t"))
@@ -197,6 +198,14 @@ function mainLoop()
 				if idle_time > 300 then
 					setup()
 				end
+
+				--If mario is dead after being not dead previousily, restart
+				local marioState = mainmemory.read_s8(BYTE_MARIO_STATE)
+				if alive and marioState == 9 then
+					setup()
+				elseif marioState == 0 then
+					alive=true
+				end
 			else
 				setup()
 			end
@@ -210,13 +219,12 @@ function startExperiment()
 	experiment_id = tonumber(forms.gettext(form_exp_id))
 	if not do_run then
 		setup()
-		os.execute("start pythonw.exe watch.py -e " .. experiment_id)
+		io.popen("start python.exe watch.py -e " .. experiment_id)
 		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10")
 		forms.settext(form_start_button, "Stop")
 		do_run = true
 	else
 		os.execute("taskkill /IM python.exe /F")
-		os.execute("taskkill /IM pythonw.exe /F")
 		forms.settext(form_start_button, "Start")
 		do_run = false
 	end
@@ -230,7 +238,7 @@ function makeForm()
 	form_exp_id = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 100)
 	form_id_text = forms.label(form, "Experiment ID", 5, 100)
 
-	form_welcome_message1 = forms.label(form, "Note: all python.exe and pythonw.exe tasks will be killed when stopped.", 5, 53, 500, 25, false)
+	form_welcome_message1 = forms.label(form, "Note: all python.exe tasks will be killed when stopped.", 5, 53, 500, 25, false)
 	form_welcome_message1 = forms.label(form, "otherwise continue with previous data, but still train a new neural network.", 5, 38, 500, 25, false)
 	form_welcome_message2 = forms.label(form, "If experiment ID is set to a new value, start with zero amount of data and new neural network,", 5, 23, 500, 25, false)
 	form_welcome_message3 = forms.label(form, "Form for mario_neural_network to train and play Super Mario World!", 5, 8, 500, 25, false)

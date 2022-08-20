@@ -21,8 +21,7 @@ class BaseMarioModel(nn.Module):
         self.linear = nn.Sequential(
             nn.Linear(8*8*32 + t*8, 128),
             act_fn(),
-            nn.Linear(128, 1),
-            nn.Sigmoid()
+            nn.Linear(128, 5)
         )
     
     def forward(self, screenshot_tensor, previous_actions_tensor):

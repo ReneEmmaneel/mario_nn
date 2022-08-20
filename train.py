@@ -2,6 +2,7 @@ from ast import expr_context
 from tabnanny import check
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, EarlyStopping
@@ -23,7 +24,7 @@ class Module(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.model = BaseMarioModel(**model_hparams)
-        self.loss_module = nn.MSELoss()
+        self.loss_module = nn.CrossEntropyLoss()
         self.data_path = data_path
         self.dataset_size = 0
 
@@ -38,12 +39,10 @@ class Module(pl.LightningModule):
 
         self.dataset_size += len(labels)
         
-        labels = labels.reshape(-1, 1).float()
-        labels = nn.functional.sigmoid(labels)
         loss = self.loss_module(preds, labels)
 
         # Log the accuracy per epoch to tensorboard (weighted average over batches)
-        self.log('train_mse', loss, on_step=False, on_epoch=True)
+        self.log('train_ce_loss', loss, on_step=False, on_epoch=True)
         return loss  # Return tensor with computational graph attached
 
     def training_epoch_end(self, training_step_outputs):
@@ -75,7 +74,7 @@ def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, mo
     # Create a PyTorch Lightning trainer
     tb_logger = pl.loggers.TensorBoardLogger(save_dir=model_path, log_graph=False, default_hp_metric=None)
     if save_best:
-        callbacks = [ModelCheckpoint(save_weights_only=True, mode="min", monitor="train_mse")]
+        callbacks = [ModelCheckpoint(save_weights_only=True, mode="min", monitor="train_ce_loss")]
     else:
         callbacks = []
     trainer = pl.Trainer(default_root_dir=model_path, accelerator=accelerator, devices=devices,
@@ -122,6 +121,8 @@ def get_next_input(module, input, deterministic=True):
         print('Action tensor size:')
         print(actions_tensor.size())
         raise ValueError("Invalid arguments during model forward") from exc
+
+    output = torch.matmul(torch.sigmoid(output), torch.tensor([1.,2.,3.,4.,5.]))
     if deterministic:
         output_index = torch.argmax(output.flatten()).item()
     else:
