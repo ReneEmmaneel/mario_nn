@@ -1,0 +1,9 @@
+TODO:
+
+Options for in the form itself:
+
+-weighted sampled
+-values (should be a list, e.g: 'speed, death')
+-weights for above values
+-percentage deterministic (value between 0-100) (use rng instead of every other x times)
+-dropdown list for which savestate to use

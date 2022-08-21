@@ -45,7 +45,7 @@ class Module(pl.LightningModule):
         loss_speed = self.loss_module(speed_preds, labels[0])
         loss_death = self.loss_module(death_preds, labels[1])
 
-        loss = 0.1 * loss_speed + 0.9 * loss_death
+        loss = 0.0001 * loss_speed + 0.9999 * loss_death
 
         # Log the accuracy per epoch to tensorboard (weighted average over batches)
         self.log('train_tot_loss', loss, on_step=False, on_epoch=True)
@@ -135,7 +135,7 @@ def get_next_input(module, input, deterministic=True):
     #call model
     try:
         if module.model.is_correct_size(screenshot_tensor, actions_tensor):
-            output = module.model(screenshot_tensor, actions_tensor)
+            preds = module.model(screenshot_tensor, actions_tensor)
         else:
             print("Input of incorrect tensor sizes!")
             print('Screenshot tensor size:')
@@ -152,11 +152,16 @@ def get_next_input(module, input, deterministic=True):
         print(actions_tensor.size())
         raise ValueError("Invalid arguments during model forward") from exc
 
-    output = torch.matmul(torch.sigmoid(output), torch.tensor([-5.,-1.,0.,12.,25.,10.,-100.]))
+    speed_preds, death_preds = module.model.seperate_output(preds)
+    speed_preds = torch.matmul(torch.sigmoid(speed_preds), torch.tensor([0.,0.1,0.2,0.5,1.]))
+    death_preds = torch.matmul(torch.sigmoid(death_preds), torch.tensor([1., 0.]))
+
+    score = 0.99 * speed_preds + 0.01 * death_preds
+
     if deterministic:
-        output_index = torch.argmax(output.flatten()).item()
+        output_index = torch.argmax(score.flatten()).item()
     else:
-        output_index = torch.multinomial(output.flatten(), 1).item()
+        output_index = torch.multinomial(score.flatten(), 1).item()
     return possible_actions[output_index].long().tolist()
 
 def main(args):
