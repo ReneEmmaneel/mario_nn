@@ -4,11 +4,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+all_objectives = {
+    'speed': 5,
+    'death': 2
+}
+
 class BaseMarioModel(nn.Module):
-    def __init__(self, t=4):
+    def __init__(self, t=4, objectives=['speed', 'death']):
         super().__init__()
         act_fn = nn.ReLU
         self.t = t
+
+        self.outputs = 0
+        for objective in objectives:
+            if objective in all_objectives.keys():
+                self.outputs += all_objectives[objective]
 
         self.input_size_per_image = 64*64*3
         self.input_size_per_action = 8
@@ -25,7 +35,7 @@ class BaseMarioModel(nn.Module):
         self.linear = nn.Sequential(
             nn.Linear(8*8*32 + t*8, 128),
             act_fn(),
-            nn.Linear(128, 7)
+            nn.Linear(128, self.outputs)
         )
     
     def seperate_output(self, output):

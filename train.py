@@ -14,10 +14,10 @@ import time
 import random
 
 import dataloader as dataloader
-from models import BaseMarioModel
+from models import BaseMarioModel, all_objectives
 
 class Module(pl.LightningModule):
-    def __init__(self, data_path, model_hparams, optimizer_hparams):
+    def __init__(self, objectives, data_path, model_hparams, optimizer_hparams):
         """
         Inputs:
             model_hparams - Hyperparameters for the model, as dictionary
@@ -27,6 +27,7 @@ class Module(pl.LightningModule):
         self.save_hyperparameters()
         self.model = BaseMarioModel(**model_hparams)
         self.loss_module = nn.CrossEntropyLoss()
+        self.objectives = objectives
         self.data_path = data_path
         self.dataset_size = 0
 
@@ -38,19 +39,21 @@ class Module(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         *input, labels = batch
         preds = self.model(*input)
-        speed_preds, death_preds = self.model.seperate_output(preds)
+        all_preds = self.model.seperate_output(preds)
 
         self.dataset_size += len(labels)
         
-        loss_speed = self.loss_module(speed_preds, labels[0])
-        loss_death = self.loss_module(death_preds, labels[1])
-
-        loss = 0.0001 * loss_speed + 0.9999 * loss_death
+        loss = None
+        for i, obj in enumerate(self.objectives):
+            obj_loss = self.loss_module(all_preds[i], labels[i])
+            if not loss:
+                loss = obj_loss
+            else:
+                loss = loss + obj_loss
+            self.log(f'train_{obj}_loss', obj_loss, on_step=False, on_epoch=True)
 
         # Log the accuracy per epoch to tensorboard (weighted average over batches)
         self.log('train_tot_loss', loss, on_step=False, on_epoch=True)
-        self.log('train_speed_loss', loss_speed, on_step=False, on_epoch=True)
-        self.log('train_death_loss', loss_death, on_step=False, on_epoch=True)
         return loss  # Return tensor with computational graph attached
 
     def training_epoch_end(self, training_step_outputs):
@@ -75,8 +78,11 @@ def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, mo
         accelerator - Which accelerator to use ('cpu' or 'gpu')
         devices - How many devices to use
         model_path - Path to which to save the training data
+
+        Furthermore some kwargs values:
         save_best - If true, save the model with the lowest training mse instead of the last
                     default False, because the dataloader is always changing
+        objectives - A list of objectives, used by the Module and Model for the training loss function
     """
 
     # Create a PyTorch Lightning trainer
@@ -113,7 +119,7 @@ def get_latest_model(folder_path):
 
     return ckpts[-1]
 
-def get_next_input(module, input, deterministic=True):
+def get_next_input(module, input, deterministic=True, objectives=['speed', 'death']):
     screenshot_tensor, previous_actions_tensor = dataloader.input_to_tensors(input["screenshots"], input["previous_points"])
 
     #Make batch of size 64 for screenshot tensor
@@ -144,13 +150,13 @@ def get_next_input(module, input, deterministic=True):
             print(actions_tensor.size())
             print("Selecting action at random...")
             return random.choice(possible_actions).long().tolist()
-    except RuntimeError as exc:
+    except RuntimeError:
         print('Error during forward!')
         print('Screenshot tensor size:')
         print(screenshot_tensor.size())
         print('Action tensor size:')
         print(actions_tensor.size())
-        raise ValueError("Invalid arguments during model forward") from exc
+        return random.choice(possible_actions).long().tolist()
 
     speed_preds, death_preds = module.model.seperate_output(preds)
     speed_preds = torch.matmul(torch.sigmoid(speed_preds), torch.tensor([0.,0.1,0.2,0.5,1.]))
@@ -169,7 +175,10 @@ def main(args):
     if not args.seed == 0:
         pl.seed_everything(args.seed)
 
-    model_hparams = {"t": 4}
+    if len(args.objectives) == 0:
+        args.objectives = ['speed', 'death']
+
+    model_hparams = {"t": 4, "objectives": args.objectives}
     optimizer_hparams={}
 
     if not args.checkpoint and args.continue_from_last:
@@ -182,6 +191,7 @@ def main(args):
             accelerator=args.accelerator, devices=args.devices,
             save_best=args.save_best,
             model_path = args.model_path,
+            objectives=['speed', 'death'], #**kwargs
             data_path = args.data_path,
             model_hparams=model_hparams,
             optimizer_hparams=optimizer_hparams)
@@ -217,6 +227,8 @@ if __name__ == '__main__':
                         help="which accelerator to use ('cpu' or 'gpu')")
     parser.add_argument('--devices', type=int, default=1,
                         help='How many devices to use')
+    parser.add_argument('-o', '--objectives', nargs='+', default=[],
+                        help="Training objectives for the model, seperated by spaces. Leave empty to use all. Possible values: speed, death")
 
     # Argument before training starts
     parser.add_argument('--sleep', type=int, default=0,

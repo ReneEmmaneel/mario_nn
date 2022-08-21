@@ -33,6 +33,7 @@ class FileChangeHandler(FileSystemEventHandler):
     def __init__(self, data_path, model_checkpoint_folder, args):
         self.data_path = data_path
         self.model_checkpoint_folder = model_checkpoint_folder
+        self.objectives = args.objectives
         self.latest_model_file = None
         self.iter = 0
         self.dir_name = None
@@ -105,7 +106,7 @@ class FileChangeHandler(FileSystemEventHandler):
                     #Add current frame
                     input["screenshots"].append(f"{event_dir_name}/screenshot_{id}.png")
 
-                    next_inputs = train.get_next_input(self.model, input, deterministic=self.iter % 4 >= 2)
+                    next_inputs = train.get_next_input(self.model, input, deterministic=self.iter % 4 >= 2, objectives=self.objectives)
 
                     add_output_to_file(output_file, id, next_inputs)
                 else:
@@ -126,8 +127,11 @@ if __name__ == "__main__":
     # Experiment number, required!
     parser.add_argument('-e', '--experiment', type=int, required=True)
     parser.add_argument('-r', '--reload', type=int, default=2)
+    parser.add_argument('-o', '--objectives', nargs='+', default=[])
 
     args = parser.parse_args()
+
+    print(args.objectives)
 
     data_path = f'experiments\\experiment_{args.experiment}\\data'
     model_checkpoint_folder = f"experiments\\experiment_{args.experiment}\\models\\lightning_logs"

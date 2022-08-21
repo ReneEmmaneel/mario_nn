@@ -30,7 +30,7 @@ Value score generated using the State_file, currently set to delta(marioX_curr, 
 where marioX_end is 10 frames after the last screenshot to determine the effect of the last button presses
 """
 class OfflineMarioDataset(Dataset):
-    def __init__(self, root='data/', t=4, verbose=False):
+    def __init__(self, root='data/', t=4, objectives=['speed', 'death'], verbose=False):
         self.data = []
 
         for data in os.listdir(root):
@@ -72,15 +72,25 @@ class OfflineMarioDataset(Dataset):
                         data_points[i]['current_state'] = row.copy()
                         i += 1
 
+            for data_point in data_points:
+                if not "future_state" in data_point:
+                    data_point["future_state"] = {
+                        "MarioX": data_point["current_state"]["MarioX"],
+                        "MarioState": '9'
+                    }
+
             data_points_filtered = [item for item in data_points if "future_state" in item.keys()]
 
             def get_values(item):
-                speed_value = self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX']))
-                death_value = int(item['future_state']['MarioState'] == '9')
-                return [speed_value, death_value]
+                values_list = []
+                if 'speed' in objectives:
+                    values_list.append(self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX'])))
+                if 'death' in objectives:
+                    values_list.append(int(item['future_state']['MarioState'] == '9'))
+                return values_list
 
-            data_points_filtered = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points_filtered]
-            self.data.extend(data_points_filtered)
+            data_points = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points]
+            self.data.extend(data_points)
 
         if verbose:
             print(f'Created {len(self.data)} items in dataset')
@@ -131,8 +141,8 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
     previous_actions_tensor = torch.stack(previous_actions, dim=0)
     return screenshot_tensor, previous_actions_tensor
 
-def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/'):
-    dataset = OfflineMarioDataset(root=root, verbose=False)
+def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/', t=4, objectives=['speed', 'death']):
+    dataset = OfflineMarioDataset(root=root, t=t, objectives=objectives, verbose=False)
 
     if len(dataset) == 0:
         return None
