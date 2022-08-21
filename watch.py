@@ -44,7 +44,7 @@ class FileChangeHandler(FileSystemEventHandler):
         self.reload_model_every_n_iterations = args.reload
 
     def load_model(self):
-        model_file = get_latest_model(self.data_path, self.model_checkpoint_folder)
+        model_file = train.get_latest_model(self.model_checkpoint_folder)
 
         if not model_file == self.latest_model_file and not model_file == None:
             print('Loading new model!')
@@ -55,7 +55,7 @@ class FileChangeHandler(FileSystemEventHandler):
             self.model.load_state_dict(state_dict)
             self.latest_model_file = model_file
 
-        print(f'Iteration {self.iter}\tLoaded model {self.latest_model_file}\tDeterministic: True')
+        print(f'Iteration {self.iter}\tLoaded model {self.latest_model_file}\tDeterministic: {self.iter % 4 >= 2}')
 
     def on_created(self, event):
         if event.is_directory:
@@ -106,7 +106,7 @@ class FileChangeHandler(FileSystemEventHandler):
                     #Add current frame
                     input["screenshots"].append(f"{event_dir_name}/screenshot_{id}.png")
 
-                    next_inputs = train.get_next_input(self.model, input, deterministic=True)
+                    next_inputs = train.get_next_input(self.model, input, deterministic=self.iter % 4 >= 2)
 
                     add_output_to_file(output_file, id, next_inputs)
                 else:
@@ -119,18 +119,6 @@ class FileChangeHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         pass
-
-def get_latest_model(data_path, folder_path):
-    ckpts = []
-    if os.path.exists(folder_path):
-        for root, subdirs, files in os.walk(folder_path):
-            for file in files:
-                if file.endswith(".ckpt"):
-                    ckpts.append(os.path.join(root, file))
-    if len(ckpts) == 0:
-        return None
-
-    return ckpts[-1]
 
 if __name__ == "__main__":
     print('Running file watch.py')

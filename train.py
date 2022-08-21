@@ -46,7 +46,7 @@ class Module(pl.LightningModule):
         return loss  # Return tensor with computational graph attached
 
     def training_epoch_end(self, training_step_outputs):
-        self.log('dataset_size', self.dataset_size, on_epoch=True)
+        self.log('dataset_size', float(self.dataset_size), on_epoch=True)
         self.dataset_size = 0
 
     def train_dataloader(self):
@@ -80,7 +80,7 @@ def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, mo
     trainer = pl.Trainer(default_root_dir=model_path, accelerator=accelerator, devices=devices,
                          log_every_n_steps=2, reload_dataloaders_every_n_epochs=2,
                          callbacks=callbacks, #Only save best model
-                         logger=tb_logger)
+                         logger=tb_logger, max_epochs=-1)
 
     # Create and fit the model
     model = Module(**kwargs)
@@ -91,6 +91,19 @@ def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, mo
     model = Module.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
 
     return model
+
+def get_latest_model(folder_path):
+    #Given a folder, return the latest file that ends with '.ckpt'
+    ckpts = []
+    if os.path.exists(folder_path):
+        for root, subdirs, files in os.walk(folder_path):
+            for file in files:
+                if file.endswith(".ckpt"):
+                    ckpts.append(os.path.join(root, file))
+    if len(ckpts) == 0:
+        return None
+
+    return ckpts[-1]
 
 def get_next_input(module, input, deterministic=True):
     screenshot_tensor, previous_actions_tensor = dataloader.input_to_tensors(input["screenshots"], input["previous_points"])
@@ -136,6 +149,10 @@ def main(args):
 
     model_hparams = {"t": 4}
 
+    if not args.checkpoint and args.continue_from_last:
+        #Set args.checkpoint to latest model in args.model_path
+        args.checkpoint = get_latest_model(args.model_path)
+
     os.makedirs(args.model_path, exist_ok=True)
     baseline_model, baseline_results = train_model(
             checkpoint=args.checkpoint,
@@ -154,6 +171,10 @@ if __name__ == '__main__':
                         help='seed used to use for setting the pseudo-random number generators, use 0 for no seed')
     parser.add_argument('--checkpoint', type=str, default='',
                         help='If checkpoint string is set, resume training from that checkpoint')
+    parser.add_argument('--continue_from_last', action='store_true',
+                        help='If checkpoint string is not set, search for latest model in models folder, and continue from that checkpoint')
+    parser.set_defaults(continue_from_last=False)
+
     parser.add_argument('--save_best', action='store_true',
                         help='Save checkpoint with lowest test_mse score')
     parser.add_argument('--save_last', action='store_false', dest='save_best',

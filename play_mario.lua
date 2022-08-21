@@ -218,9 +218,11 @@ do_run = false
 function startExperiment()
 	experiment_id = tonumber(forms.gettext(form_exp_id))
 	if not do_run then
+		local continue = forms.ischecked(form_continue_from_last_box)
+		local continue_string = continue and " --continue_from_last" or ""
 		setup()
 		io.popen("start python.exe watch.py -e " .. experiment_id)
-		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10")
+		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10" .. continue_string)
 		forms.settext(form_start_button, "Stop")
 		do_run = true
 	else
@@ -234,16 +236,18 @@ function makeForm()
 	form = forms.newform(500, 500, "nn_mario")
 
 	--Create form from bottom to top, because of z-index rendering issues
-	form_start_button = forms.button(form, "Start", startExperiment, 120, 125, 100, 20)
+	form_start_button = forms.button(form, "Start", startExperiment, 120, 150, 100, 20)
+
+	form_continue_from_last_text = forms.label(form, "Continue last model", 5, 125)
+	form_continue_from_last_box = forms.checkbox(form, "", 120, 125)
+	
 	form_exp_id = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 100)
 	form_id_text = forms.label(form, "Experiment ID", 5, 100)
 
 	form_welcome_message1 = forms.label(form, "Note: all python.exe tasks will be killed when stopped.", 5, 53, 500, 25, false)
-	form_welcome_message1 = forms.label(form, "otherwise continue with previous data, but still train a new neural network.", 5, 38, 500, 25, false)
+	form_welcome_message1 = forms.label(form, "otherwise continue with previous data.", 5, 38, 500, 25, false)
 	form_welcome_message2 = forms.label(form, "If experiment ID is set to a new value, start with zero amount of data and new neural network,", 5, 23, 500, 25, false)
 	form_welcome_message3 = forms.label(form, "Form for mario_neural_network to train and play Super Mario World!", 5, 8, 500, 25, false)
-	
-	
 end
 
 makeForm()
