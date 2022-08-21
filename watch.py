@@ -50,7 +50,7 @@ class FileChangeHandler(FileSystemEventHandler):
             print('Loading new model!')
             model_hparams = {"t": 4}
             optimizer_hparams={"lr": 0.1}
-            self.model = Module(data_path, model_hparams, optimizer_hparams)
+            self.model = Module(args.objectives, data_path, model_hparams, optimizer_hparams)
             state_dict = torch.load(model_file)["state_dict"]
             self.model.load_state_dict(state_dict)
             self.latest_model_file = model_file
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print(args.objectives)
+    print("Training objectives: ", args.objectives)
 
     data_path = f'experiments\\experiment_{args.experiment}\\data'
     model_checkpoint_folder = f"experiments\\experiment_{args.experiment}\\models\\lightning_logs"
