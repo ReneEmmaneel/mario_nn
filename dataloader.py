@@ -32,7 +32,6 @@ where marioX_end is 10 frames after the last screenshot to determine the effect 
 class OfflineMarioDataset(Dataset):
     def __init__(self, root='data/', t=4, verbose=False):
         self.data = []
-        self.all_values = [range(-20, 40, 10)]
 
         for data in os.listdir(root):
             data_points = []
@@ -76,7 +75,9 @@ class OfflineMarioDataset(Dataset):
             data_points_filtered = [item for item in data_points if "future_state" in item.keys()]
 
             def get_values(item):
-                return [self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX']))]
+                speed_value = self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX']))
+                death_value = int(item['future_state']['MarioState'] == '9')
+                return [speed_value, death_value]
 
             data_points_filtered = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points_filtered]
             self.data.extend(data_points_filtered)
@@ -103,7 +104,7 @@ class OfflineMarioDataset(Dataset):
         screenshot_tensor, previous_actions_tensor = item['input']
         values = item['values']
         
-        return screenshot_tensor, previous_actions_tensor, values[0]
+        return screenshot_tensor, previous_actions_tensor, values
 
 def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, append_previous_actions_to=3):
     screenshot_tensors = []
@@ -146,10 +147,10 @@ def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/')
         val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
         return train_loader, test_loader, val_loader
     else:
-        labels = torch.tensor([t[2] for t in dataset])
+        labels = torch.tensor([t[2][0] for t in dataset])
         class_sample_count = np.array([len(np.where(labels == t)[0]) for t in range(5)])
         weight = 1. / class_sample_count
-        samples_weight = np.array([weight[t[2]] for t in dataset])
+        samples_weight = np.array([weight[t[2][0]] for t in dataset])
 
         sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
 
@@ -157,5 +158,5 @@ def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/')
         return train_loader
 
 if __name__ == '__main__':
-    dataloader = create_dataloader(root='experiments\experiment_4\data')
+    dataloader = create_dataloader(root='experiments\experiment_1\data')
     print(dataloader)

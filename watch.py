@@ -7,7 +7,6 @@ import os
 import csv
 import random
 
-import logging
 import argparse
 import torch
 
@@ -129,23 +128,6 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--reload', type=int, default=2)
 
     args = parser.parse_args()
-
-    #Log uncaught exceptions to watch.log for debugging purposes
-    logging.basicConfig(filename=f'experiments\\experiment_{args.experiment}\\watch.log',
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
-
-    logging.info("Starting watch.py")
-    logger = logging.getLogger('urbanGUI')
-
-    def handle_exception(extype, value, tb):
-        """Make a function that is called for every exception
-        """
-        logger.exception(value)
-
-    sys.excepthook = handle_exception
 
     data_path = f'experiments\\experiment_{args.experiment}\\data'
     model_checkpoint_folder = f"experiments\\experiment_{args.experiment}\\models\\lightning_logs"

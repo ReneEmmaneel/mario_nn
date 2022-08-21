@@ -1,5 +1,6 @@
 from ast import expr_context
 from tabnanny import check
+from xml.etree.ElementTree import tostringlist
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,7 @@ import argparse
 
 import os
 import time
+import random
 
 import dataloader as dataloader
 from models import BaseMarioModel
@@ -29,20 +31,26 @@ class Module(pl.LightningModule):
         self.dataset_size = 0
 
     def configure_optimizers(self):
-        optimizer = optim.SGD(self.parameters(), **self.hparams.optimizer_hparams)
+        optimizer = optim.AdamW(self.parameters(), **self.hparams.optimizer_hparams)
 
         return optimizer
 
     def training_step(self, batch, batch_idx):
         *input, labels = batch
         preds = self.model(*input)
+        speed_preds, death_preds = self.model.seperate_output(preds)
 
         self.dataset_size += len(labels)
         
-        loss = self.loss_module(preds, labels)
+        loss_speed = self.loss_module(speed_preds, labels[0])
+        loss_death = self.loss_module(death_preds, labels[1])
+
+        loss = 0.1 * loss_speed + 0.9 * loss_death
 
         # Log the accuracy per epoch to tensorboard (weighted average over batches)
-        self.log('train_ce_loss', loss, on_step=False, on_epoch=True)
+        self.log('train_tot_loss', loss, on_step=False, on_epoch=True)
+        self.log('train_speed_loss', loss_speed, on_step=False, on_epoch=True)
+        self.log('train_death_loss', loss_death, on_step=False, on_epoch=True)
         return loss  # Return tensor with computational graph attached
 
     def training_epoch_end(self, training_step_outputs):
@@ -78,7 +86,7 @@ def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, mo
     else:
         callbacks = []
     trainer = pl.Trainer(default_root_dir=model_path, accelerator=accelerator, devices=devices,
-                         log_every_n_steps=2, reload_dataloaders_every_n_epochs=2,
+                         log_every_n_steps=2, reload_dataloaders_every_n_epochs=10,
                          callbacks=callbacks, #Only save best model
                          logger=tb_logger, max_epochs=-1)
 
@@ -126,16 +134,25 @@ def get_next_input(module, input, deterministic=True):
     
     #call model
     try:
-        output = module.model(screenshot_tensor, actions_tensor)
+        if module.model.is_correct_size(screenshot_tensor, actions_tensor):
+            output = module.model(screenshot_tensor, actions_tensor)
+        else:
+            print("Input of incorrect tensor sizes!")
+            print('Screenshot tensor size:')
+            print(screenshot_tensor.size())
+            print('Action tensor size:')
+            print(actions_tensor.size())
+            print("Selecting action at random...")
+            return random.choice(possible_actions).long().tolist()
     except RuntimeError as exc:
-        print('Error during forward, probably caused by invalid input tensor sizes!')
+        print('Error during forward!')
         print('Screenshot tensor size:')
         print(screenshot_tensor.size())
         print('Action tensor size:')
         print(actions_tensor.size())
         raise ValueError("Invalid arguments during model forward") from exc
 
-    output = torch.matmul(torch.sigmoid(output), torch.tensor([1.,2.,3.,4.,5.]))
+    output = torch.matmul(torch.sigmoid(output), torch.tensor([-5.,-1.,0.,12.,25.,10.,-100.]))
     if deterministic:
         output_index = torch.argmax(output.flatten()).item()
     else:
@@ -148,6 +165,7 @@ def main(args):
         pl.seed_everything(args.seed)
 
     model_hparams = {"t": 4}
+    optimizer_hparams={}
 
     if not args.checkpoint and args.continue_from_last:
         #Set args.checkpoint to latest model in args.model_path
@@ -161,7 +179,7 @@ def main(args):
             model_path = args.model_path,
             data_path = args.data_path,
             model_hparams=model_hparams,
-            optimizer_hparams={"lr": 0.1})
+            optimizer_hparams=optimizer_hparams)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -182,7 +200,7 @@ if __name__ == '__main__':
     parser.set_defaults(save_best=False)
 
     # Training parameters
-    parser.add_argument('--batch_size', type=int, default=32,
+    parser.add_argument('--batch_size', type=int, default=16,
                         help='batch size used in training and evaluation')
     parser.add_argument('--num_workers', type=int, default=2, #Higher crashes it for some reason, might want to look into it...
                         help='amount of workers for creating the dataloader')
