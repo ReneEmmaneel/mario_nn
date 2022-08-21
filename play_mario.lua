@@ -225,7 +225,6 @@ function startExperiment()
 		if not (obj_string == '') then
 			obj_string = " -o " .. obj_string
 		end
-		print(obj_string)
 
 		setup()
 		io.popen("start python.exe watch.py -e " .. experiment_id .. obj_string)

@@ -191,7 +191,7 @@ def main(args):
             accelerator=args.accelerator, devices=args.devices,
             save_best=args.save_best,
             model_path = args.model_path,
-            objectives=['speed', 'death'], #**kwargs
+            objectives=args.objectives, #**kwargs
             data_path = args.data_path,
             model_hparams=model_hparams,
             optimizer_hparams=optimizer_hparams)
