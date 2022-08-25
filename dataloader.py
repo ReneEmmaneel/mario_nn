@@ -30,70 +30,77 @@ Value score generated using the State_file, currently set to delta(marioX_curr, 
 where marioX_end is 10 frames after the last screenshot to determine the effect of the last button presses
 """
 class OfflineMarioDataset(Dataset):
-    def __init__(self, root='data/', t=4, objectives=['speed', 'death'], verbose=False):
+    def __init__(self, root='data/', t=4, objectives=['speed', 'death']):
         self.data = []
+        self.dirs = []
+        self.root = root
+        self.t = t
+        self.objectives = objectives
 
-        for data in os.listdir(root):
-            data_points = []
-            state_file = os.path.join(root, data, 'stateFile.csv')
-            output_file = os.path.join(root, data, 'outputFile.csv')
+        self.update_data()
+    
+    def update_data(self):
+        for data in os.listdir(self.root):
+            if not data in self.dirs:
+                self.add_dir_to_data_list(data)
 
-            if not os.path.isfile(state_file) or not os.path.isfile(output_file):
-                continue
+    def add_dir_to_data_list(self, dir_name):
+        data_points = []
+        state_file = os.path.join(self.root, dir_name, 'stateFile.csv')
+        output_file = os.path.join(self.root, dir_name, 'outputFile.csv')
 
-            with open(output_file, newline='') as state_file_data:
-                reader = csv.DictReader(state_file_data, delimiter=',')
+        if not os.path.isfile(state_file) or not os.path.isfile(output_file):
+            return
 
-                previous_points = []
+        with open(output_file, newline='') as state_file_data:
+            reader = csv.DictReader(state_file_data, delimiter=',')
 
-                for row in reader:
-                    previous_points.append(row)
-                    if len(previous_points) > t:
-                        previous_points = previous_points[1:]
-                    if len(previous_points) == t:
-                        data_point = {}
-                        data_point["previous_points"] = previous_points.copy()
-                        data_point["screenshots"] = [os.path.join(root, data, f'screenshot_{point["id"]}.png') for point in data_point["previous_points"]]
-                        data_points.append(data_point)
+            previous_points = []
 
-            with open(state_file, newline='') as state_file_data:
-                reader = csv.DictReader(state_file_data, delimiter=',')
+            for row in reader:
+                previous_points.append(row)
+                if len(previous_points) > self.t:
+                    previous_points = previous_points[1:]
+                if len(previous_points) == self.t:
+                    data_point = {}
+                    data_point["previous_points"] = previous_points.copy()
+                    data_point["screenshots"] = [os.path.join(self.root, dir_name, f'screenshot_{point["id"]}.png') for point in data_point["previous_points"]]
+                    data_points.append(data_point)
 
-                i=0
-                for row in reader:
-                    try:
-                        last_id = int(data_points[i]["previous_points"][t-1]['id'])
-                    except IndexError:
-                        break
-                    
-                    if int(row['id']) == last_id:
-                        if i > 0:
-                            data_points[i-1]['future_state'] = row.copy()
-                        data_points[i]['current_state'] = row.copy()
-                        i += 1
+        with open(state_file, newline='') as state_file_data:
+            reader = csv.DictReader(state_file_data, delimiter=',')
 
-            for data_point in data_points:
-                if not "future_state" in data_point:
-                    data_point["future_state"] = {
-                        "MarioX": data_point["current_state"]["MarioX"],
-                        "MarioState": '9'
-                    }
+            i=0
+            for row in reader:
+                try:
+                    last_id = int(data_points[i]["previous_points"][self.t-1]['id'])
+                except IndexError:
+                    break
+                
+                if int(row['id']) == last_id:
+                    if i > 0:
+                        data_points[i-1]['future_state'] = row.copy()
+                    data_points[i]['current_state'] = row.copy()
+                    i += 1
 
-            data_points_filtered = [item for item in data_points if "future_state" in item.keys()]
+        for data_point in data_points:
+            if not "future_state" in data_point:
+                data_point["future_state"] = {
+                    "MarioX": data_point["current_state"]["MarioX"],
+                    "MarioState": '9'
+                }
 
-            def get_values(item):
-                values_list = []
-                if 'speed' in objectives:
-                    values_list.append(self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX'])))
-                if 'death' in objectives:
-                    values_list.append(int(item['future_state']['MarioState'] == '9'))
-                return values_list
+        def get_values(item):
+            values_list = []
+            if 'speed' in self.objectives:
+                values_list.append(self.speed_to_encoding(int(item['future_state']['MarioX']) - int(item['current_state']['MarioX'])))
+            if 'death' in self.objectives:
+                values_list.append(int(item['future_state']['MarioState'] == '9'))
+            return values_list
 
-            data_points = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points]
-            self.data.extend(data_points)
-
-        if verbose:
-            print(f'Created {len(self.data)} items in dataset')
+        data_points = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points]
+        self.data.extend(data_points)
+        self.dirs.append(dir_name)
 
     def speed_to_encoding(self, value):
         #range -inf to -16: 0
@@ -141,14 +148,11 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
     previous_actions_tensor = torch.stack(previous_actions, dim=0)
     return screenshot_tensor, previous_actions_tensor
 
-def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/', t=4, objectives=['speed', 'death']):
-    dataset = OfflineMarioDataset(root=root, t=t, objectives=objectives, verbose=False)
-
-    if len(dataset) == 0:
-        return None
-
-
+def loaders_from_dataset(dataset, batch_size = 32, num_workers=1, split=False):
     if split:
+        train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+        return train_loader
+
         val_size = test_size = int(len(dataset) / 4)
         train_size = len(dataset) - val_size - test_size
         train_dataset, test_dataset, val_dataset = random_split(dataset, [train_size, test_size, val_size])
@@ -167,6 +171,22 @@ def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/',
         train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, sampler=sampler)
         return train_loader
 
+def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/', t=4, objectives=['speed', 'death']):
+    dataset = OfflineMarioDataset(root=root, t=t, objectives=objectives)
+
+    if len(dataset) == 0:
+        return None
+
+    return dataset, loaders_from_dataset(dataset, batch_size=batch_size, num_workers=num_workers, split=split)
+
+def update_dataloader(dataset, batch_size = 32, num_workers=1, split=False):
+    dataset.update_data()
+
+    if len(dataset) == 0:
+        return None
+
+    return dataset, loaders_from_dataset(dataset, batch_size=batch_size, num_workers=num_workers, split=split)
+
 if __name__ == '__main__':
-    dataloader = create_dataloader(root='experiments\experiment_1\data')
+    dataset, dataloader = create_dataloader(root='experiments\experiment_1\data')
     print(dataloader)

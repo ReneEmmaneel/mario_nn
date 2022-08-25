@@ -30,6 +30,7 @@ class Module(pl.LightningModule):
         self.objectives = objectives
         self.data_path = data_path
         self.dataset_size = 0
+        self.dataset = None
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), **self.hparams.optimizer_hparams)
@@ -46,10 +47,12 @@ class Module(pl.LightningModule):
         loss = None
         for i, obj in enumerate(self.objectives):
             obj_loss = self.loss_module(all_preds[i], labels[i])
+            obj_acc = (all_preds[i].argmax(dim=-1) == labels[i]).float().mean()
             if not loss:
                 loss = obj_loss
             else:
                 loss = loss + obj_loss
+            self.log(f'train_{obj}_acc', obj_acc, on_step=False, on_epoch=True)
             self.log(f'train_{obj}_loss', obj_loss, on_step=False, on_epoch=True)
 
         # Log the accuracy per epoch to tensorboard (weighted average over batches)
@@ -66,9 +69,16 @@ class Module(pl.LightningModule):
             time.sleep(10)
         #During training dataloader function, create a new dataset with only a train split
         train_dataloader = None
-        while not train_dataloader: 
-            train_dataloader = dataloader.create_dataloader(
-                    root=self.data_path, batch_size=args.batch_size, num_workers=args.num_workers, split=False)
+        while not train_dataloader:
+            if not self.dataset:
+                dataset, train_dataloader = dataloader.create_dataloader(
+                        root=self.data_path, batch_size=args.batch_size, num_workers=args.num_workers, split=True)
+            else:
+                dataset, train_dataloader = dataloader.update_dataloader(self.dataset,
+                        batch_size=args.batch_size, num_workers=args.num_workers, split=True)
+                    
+
+        self.dataset = dataset
         return train_dataloader
 
 def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, model_path='models', **kwargs):
@@ -92,7 +102,7 @@ def train_model(checkpoint='', accelerator='gpu', devices=1, save_best=False, mo
     else:
         callbacks = []
     trainer = pl.Trainer(default_root_dir=model_path, accelerator=accelerator, devices=devices,
-                         log_every_n_steps=2, reload_dataloaders_every_n_epochs=10,
+                         log_every_n_steps=2, reload_dataloaders_every_n_epochs=2,
                          callbacks=callbacks, #Only save best model
                          logger=tb_logger, max_epochs=-1)
 
@@ -162,7 +172,7 @@ def get_next_input(module, input, deterministic=True, objectives=['speed', 'deat
     speed_preds = torch.matmul(torch.sigmoid(speed_preds), torch.tensor([0.,0.1,0.2,0.5,1.]))
     death_preds = torch.matmul(torch.sigmoid(death_preds), torch.tensor([1., 0.]))
 
-    score = 0.99 * speed_preds + 0.01 * death_preds
+    score = 0.9 * speed_preds + 0.1 * death_preds
 
     if deterministic:
         output_index = torch.argmax(score.flatten()).item()
