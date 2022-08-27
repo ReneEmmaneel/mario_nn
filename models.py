@@ -1,3 +1,4 @@
+from itertools import count
 from turtle import speed
 from typing import Concatenate
 import torch
@@ -15,8 +16,9 @@ class BaseMarioModel(nn.Module):
         act_fn = nn.ReLU
         self.t = t
 
+        self.objectives = objectives
         self.outputs = 0
-        for objective in objectives:
+        for objective in self.objectives:
             if objective in all_objectives.keys():
                 self.outputs += all_objectives[objective]
 
@@ -39,10 +41,14 @@ class BaseMarioModel(nn.Module):
         )
     
     def seperate_output(self, output):
-        speed_output = output[:, :5]
-        death_output = output[:, 5:]
+        output_tensors = {}
 
-        return speed_output, death_output
+        count_output = 0
+        for objective in self.objectives:
+            objective_size = all_objectives[objective]
+            output_tensor = output[:, count_output:count_output + objective_size]
+            output_tensors[objective] = output_tensor
+        return output_tensors
 
     def forward(self, screenshot_tensor, previous_actions_tensor):
         b, t, h, w, c = screenshot_tensor.size()

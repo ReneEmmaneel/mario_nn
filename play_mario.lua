@@ -219,6 +219,7 @@ function startExperiment()
 	experiment_id = tonumber(forms.gettext(form_exp_id))
 	if not do_run then
 		local continue_string = forms.ischecked(form_continue_from_last_box) and " --continue_from_last" or ""
+		
 		local obj_speed = forms.ischecked(form_obj_speed_box) and " speed" or ""
 		local obj_death = forms.ischecked(form_obj_death_box) and " death" or ""
 		obj_string = obj_speed .. obj_death
@@ -226,9 +227,11 @@ function startExperiment()
 			obj_string = " -o " .. obj_string
 		end
 
+		local use_weighted_string = forms.ischecked(form_use_weighted_data_box) and " --use_weighted_dataloader" or ""
+
 		setup()
-		io.popen("start python.exe watch.py -e " .. experiment_id .. obj_string)
-		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10" .. continue_string .. obj_string)
+		io.popen("start python.exe watch.py -e " .. experiment_id .. obj_string .. use_weighted_string)
+		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10" .. continue_string .. obj_string .. use_weighted_string)
 		forms.settext(form_start_button, "Stop")
 		do_run = true
 	else
@@ -242,7 +245,10 @@ function makeForm()
 	form = forms.newform(500, 500, "nn_mario")
 
 	--Create form from bottom to top, because of z-index rendering issues
-	form_start_button = forms.button(form, "Start", startExperiment, 120, 150, 100, 20)
+	form_start_button = forms.button(form, "Start", startExperiment, 120, 175, 100, 20)
+	
+	form_use_weighted_data_text = forms.label(form, "Use weighted data", 5, 150)
+	form_use_weighted_data_box = forms.checkbox(form, "", 120, 145)
 
 	form_continue_from_last_text = forms.label(form, "Continue last model", 5, 125)
 	form_continue_from_last_box = forms.checkbox(form, "", 120, 120)
@@ -250,12 +256,14 @@ function makeForm()
 	form_exp_id = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 100)
 	form_id_text = forms.label(form, "Experiment ID", 5, 100)
 	
+	--Right side
 	form_obj_death_text = forms.label(form, "Mario death", 275, 150)
 	form_obj_death_box = forms.checkbox(form, "", 260, 145)
 	form_obj_speed_text = forms.label(form, "Mario speed", 275, 125)
 	form_obj_speed_box = forms.checkbox(form, "", 260, 120)
 	form_obj_text = forms.label(form, "Which training objectives to use:", 260, 100, 200, 25)
 
+	--Top text
 	form_welcome_message1 = forms.label(form, "Note: all python.exe tasks will be killed when stopped.", 5, 53, 500, 25, false)
 	form_welcome_message1 = forms.label(form, "otherwise continue with previous data.", 5, 38, 500, 25, false)
 	form_welcome_message2 = forms.label(form, "If experiment ID is set to a new value, start with zero amount of data and new neural network,", 5, 23, 500, 25, false)

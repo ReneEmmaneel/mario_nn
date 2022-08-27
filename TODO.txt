@@ -2,7 +2,7 @@ TODO:
 
 Options for in the form itself:
 
--weighted sampled checkboxes
+-weighted sampled checkboxes (working on it, but finish it and add it to the form, there also seems to be a lot of bugs regarding continueing)
 -weights for above training objectives
 -percentage deterministic (value between 0-100) (use rng instead of every other x times)
 -dropdown list for which savestate to use

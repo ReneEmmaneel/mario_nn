@@ -17,7 +17,7 @@ import dataloader as dataloader
 from models import BaseMarioModel, all_objectives
 
 class Module(pl.LightningModule):
-    def __init__(self, objectives, data_path, model_hparams, optimizer_hparams):
+    def __init__(self, objectives, data_path, model_hparams, optimizer_hparams, use_weighted_dataloader=False):
         """
         Inputs:
             model_hparams - Hyperparameters for the model, as dictionary
@@ -31,6 +31,7 @@ class Module(pl.LightningModule):
         self.data_path = data_path
         self.dataset_size = 0
         self.dataset = None
+        self.use_weighted_dataloader = use_weighted_dataloader
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), **self.hparams.optimizer_hparams)
@@ -46,8 +47,8 @@ class Module(pl.LightningModule):
         
         loss = None
         for i, obj in enumerate(self.objectives):
-            obj_loss = self.loss_module(all_preds[i], labels[i])
-            obj_acc = (all_preds[i].argmax(dim=-1) == labels[i]).float().mean()
+            obj_loss = self.loss_module(all_preds[obj], labels[i])
+            obj_acc = (all_preds[obj].argmax(dim=-1) == labels[i]).float().mean()
             if not loss:
                 loss = obj_loss
             else:
@@ -72,10 +73,10 @@ class Module(pl.LightningModule):
         while not train_dataloader:
             if not self.dataset:
                 dataset, train_dataloader = dataloader.create_dataloader(
-                        root=self.data_path, batch_size=args.batch_size, num_workers=args.num_workers, split=True)
+                        root=self.data_path, batch_size=args.batch_size, num_workers=args.num_workers, weighted= self.use_weighted_dataloader)
             else:
                 dataset, train_dataloader = dataloader.update_dataloader(self.dataset,
-                        batch_size=args.batch_size, num_workers=args.num_workers, split=True)
+                        batch_size=args.batch_size, num_workers=args.num_workers, weighted= self.use_weighted_dataloader)
                     
 
         self.dataset = dataset
@@ -168,11 +169,19 @@ def get_next_input(module, input, deterministic=True, objectives=['speed', 'deat
         print(actions_tensor.size())
         return random.choice(possible_actions).long().tolist()
 
-    speed_preds, death_preds = module.model.seperate_output(preds)
-    speed_preds = torch.matmul(torch.sigmoid(speed_preds), torch.tensor([0.,0.1,0.2,0.5,1.]))
-    death_preds = torch.matmul(torch.sigmoid(death_preds), torch.tensor([1., 0.]))
+    all_preds = module.model.seperate_output(preds)
 
-    score = 0.9 * speed_preds + 0.1 * death_preds
+    score = None
+    for objective, preds in all_preds.items(): 
+        if objective == 'speed':
+            pred_result = torch.matmul(torch.sigmoid(preds), torch.tensor([0.,0.1,0.2,0.5,1.]))
+        elif objective == 'death':
+            pred_result = torch.matmul(torch.sigmoid(preds), torch.tensor([1., 0.]))
+
+        if score == None:
+            score = pred_result
+        else:
+            score += pred_result
 
     if deterministic:
         output_index = torch.argmax(score.flatten()).item()
@@ -201,10 +210,11 @@ def main(args):
             accelerator=args.accelerator, devices=args.devices,
             save_best=args.save_best,
             model_path = args.model_path,
-            objectives=args.objectives, #**kwargs
+            objectives = args.objectives, #**kwargs
             data_path = args.data_path,
             model_hparams=model_hparams,
-            optimizer_hparams=optimizer_hparams)
+            optimizer_hparams=optimizer_hparams,
+            use_weighted_dataloader=args.use_weighted_dataloader)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -239,6 +249,12 @@ if __name__ == '__main__':
                         help='How many devices to use')
     parser.add_argument('-o', '--objectives', nargs='+', default=[],
                         help="Training objectives for the model, seperated by spaces. Leave empty to use all. Possible values: speed, death")
+
+    parser.add_argument('--use_weighted_dataloader', action='store_true',
+                        help='Use a dataloader weighted to get a balanced amount of x_speed values')
+    parser.add_argument('--use_full_dataloader', action='store_false', dest='use_weighted_dataloader',
+                        help='Use the entire dataset for the dataloader')
+    parser.set_defaults(use_weighted_dataloader=False)
 
     # Argument before training starts
     parser.add_argument('--sleep', type=int, default=0,

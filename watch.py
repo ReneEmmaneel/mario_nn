@@ -39,6 +39,7 @@ class FileChangeHandler(FileSystemEventHandler):
         self.dir_name = None
         self.prev_id = None
         self.model = None
+        self.use_weighted_dataloader = args.use_weighted_dataloader
 
         #Other args
         self.reload_model_every_n_iterations = args.reload
@@ -47,10 +48,11 @@ class FileChangeHandler(FileSystemEventHandler):
         model_file = train.get_latest_model(self.model_checkpoint_folder)
 
         if not model_file == self.latest_model_file and not model_file == None:
-            print('Loading new model!')
-            model_hparams = {"t": 4}
+            model_hparams = {"t": 4, "objectives": self.objectives}
             optimizer_hparams={"lr": 0.1}
-            self.model = Module(args.objectives, data_path, model_hparams, optimizer_hparams)
+
+            print(self.use_weighted_dataloader)
+            self.model = Module(self.objectives, data_path, model_hparams, optimizer_hparams)
             state_dict = torch.load(model_file)["state_dict"]
             self.model.load_state_dict(state_dict)
             self.latest_model_file = model_file
@@ -129,8 +131,16 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--reload', type=int, default=2)
     parser.add_argument('-o', '--objectives', nargs='+', default=[])
 
+    parser.add_argument('--use_weighted_dataloader', action='store_true',
+                        help='Use a dataloader weighted to get a balanced amount of x_speed values')
+    parser.add_argument('--use_full_dataloader', action='store_false', dest='use_weighted_dataloader',
+                        help='Use the entire dataset for the dataloader')
+    parser.set_defaults(use_weighted_dataloader=False)
+
     args = parser.parse_args()
 
+    if len(args.objectives) == 0:
+        args.objectives = ['speed', 'death']
     print("Training objectives: ", args.objectives)
 
     data_path = f'experiments\\experiment_{args.experiment}\\data'

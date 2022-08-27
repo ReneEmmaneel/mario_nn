@@ -36,13 +36,26 @@ class OfflineMarioDataset(Dataset):
         self.root = root
         self.t = t
         self.objectives = objectives
+        self.remake = False
 
         self.update_data()
     
     def update_data(self):
-        for data in os.listdir(self.root):
-            if not data in self.dirs:
+        if self.remake: #If set to true, remake the entire dataset by deleting all existing data
+            self.data = []
+            self.dirs = []
+
+        for data in os.listdir(self.root)[:-1]:
+            if not data in self.dirs: #Skip the last one, as the data for that run is still coming in
                 self.add_dir_to_data_list(data)
+            self.remake = False
+
+        if len(self.dirs) == 0:
+            #Load the not finished first run
+            for data in os.listdir(self.root):
+                self.add_dir_to_data_list(data)
+                print(f'Added {data} to dataset')
+            self.remake = True
 
     def add_dir_to_data_list(self, dir_name):
         data_points = []
@@ -148,18 +161,10 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
     previous_actions_tensor = torch.stack(previous_actions, dim=0)
     return screenshot_tensor, previous_actions_tensor
 
-def loaders_from_dataset(dataset, batch_size = 32, num_workers=1, split=False):
-    if split:
+def loaders_from_dataset(dataset, batch_size = 32, num_workers=1, weighted=False):
+    if not weighted:
         train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
         return train_loader
-
-        val_size = test_size = int(len(dataset) / 4)
-        train_size = len(dataset) - val_size - test_size
-        train_dataset, test_dataset, val_dataset = random_split(dataset, [train_size, test_size, val_size])
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
-        return train_loader, test_loader, val_loader
     else:
         labels = torch.tensor([t[2][0] for t in dataset])
         class_sample_count = np.array([len(np.where(labels == t)[0]) for t in range(5)])
@@ -171,22 +176,21 @@ def loaders_from_dataset(dataset, batch_size = 32, num_workers=1, split=False):
         train_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, sampler=sampler)
         return train_loader
 
-def create_dataloader(batch_size = 32, num_workers=1, split=False, root='data/', t=4, objectives=['speed', 'death']):
+def create_dataloader(batch_size = 32, num_workers=1, weighted=False, root='data/', t=4, objectives=['speed', 'death']):
     dataset = OfflineMarioDataset(root=root, t=t, objectives=objectives)
 
     if len(dataset) == 0:
         return None
 
-    return dataset, loaders_from_dataset(dataset, batch_size=batch_size, num_workers=num_workers, split=split)
+    return dataset, loaders_from_dataset(dataset, batch_size=batch_size, num_workers=num_workers, weighted=weighted)
 
-def update_dataloader(dataset, batch_size = 32, num_workers=1, split=False):
+def update_dataloader(dataset, batch_size = 32, num_workers=1, weighted=False):
     dataset.update_data()
 
     if len(dataset) == 0:
         return None
 
-    return dataset, loaders_from_dataset(dataset, batch_size=batch_size, num_workers=num_workers, split=split)
+    return dataset, loaders_from_dataset(dataset, batch_size=batch_size, num_workers=num_workers, weighted=weighted)
 
 if __name__ == '__main__':
     dataset, dataloader = create_dataloader(root='experiments\experiment_1\data')
-    print(dataloader)
