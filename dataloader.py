@@ -54,7 +54,6 @@ class OfflineMarioDataset(Dataset):
             #Load the not finished first run
             for data in os.listdir(self.root):
                 self.add_dir_to_data_list(data)
-                print(f'Added {data} to dataset')
             self.remake = True
 
     def add_dir_to_data_list(self, dir_name):

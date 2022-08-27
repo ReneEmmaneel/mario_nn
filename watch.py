@@ -51,7 +51,6 @@ class FileChangeHandler(FileSystemEventHandler):
             model_hparams = {"t": 4, "objectives": self.objectives}
             optimizer_hparams={"lr": 0.1}
 
-            print(self.use_weighted_dataloader)
             self.model = Module(self.objectives, data_path, model_hparams, optimizer_hparams)
             state_dict = torch.load(model_file)["state_dict"]
             self.model.load_state_dict(state_dict)
