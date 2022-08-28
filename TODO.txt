@@ -6,10 +6,4 @@ Options for in the form itself:
 -weights for above training objectives
 -percentage deterministic (value between 0-100) (use rng instead of every other x times)
 -dropdown list for which savestate to use
-
-
-
-
-PROBLEMS:
--Dataloading time is insane -> make it waaaay faster by not loading it every time
--Furthermore, more epochs per dataloading
+-dropdown list for which model to use (+ possible hparams)

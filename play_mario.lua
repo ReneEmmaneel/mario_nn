@@ -165,12 +165,35 @@ function setController(line)
 	end
 end
 
+function get_id_from_output_file(lastOutput)
+	if not isempty(lastOutput) and lastOutput ~= nil then
+		t = split(lastOutput, ',')
+		if t[1] == 'id' then --first line
+			last_output_id = -1
+		else
+			last_output_id = t[1]
+		end
+	else
+		last_output_id = -1
+	end
+	return last_output_id
+end
+
+
 function mainLoop()
 	while true do
 		if do_run then
 			if checkInLevel() then
+				lastOutput = readOutputFile()
+
 				if id % FRAMES_PER_SCREENSHOT == 0 then
 					client.screenshot("experiments/experiment_" .. experiment_id .. "/data/data_" .. time_stamp .. "/screenshot_" .. id .. ".png")
+
+					last_output_id = get_id_from_output_file(lastOutput)
+					while (id - last_output_id > 10) and (not first_run) do
+						lastOutput = readOutputFile()
+						last_output_id = get_id_from_output_file(lastOutput)
+					end
 				end
 			
 				controller_state = getController()
@@ -184,8 +207,7 @@ function mainLoop()
 					idle_time = 0
 				end
 
-				--update joystick#
-				lastOutput = readOutputFile()
+				--update joystick
 				setController(lastOutput)
 
 				writeStateToFile(id, controller_state, marioX, marioY, marioState)
@@ -194,17 +216,20 @@ function mainLoop()
 
 				--If mario is idle for 15 seconds, restart
 				if idle_time > 900 then
+					first_run = false
 					setup()
 				end
 
 				--If mario is dead after being not dead previousily, restart
 				local marioState = mainmemory.read_s8(BYTE_MARIO_STATE)
 				if alive and marioState == 9 then
+					first_run = false
 					setup()
 				elseif marioState == 0 then
 					alive=true
 				end
 			else
+				first_run = false
 				setup()
 			end
 		end
@@ -214,6 +239,7 @@ end
 
 do_run = false
 function startExperiment()
+	first_run = true
 	experiment_id = tonumber(forms.gettext(form_exp_id))
 	if not do_run then
 		local continue_string = forms.ischecked(form_continue_from_last_box) and " --continue_from_last" or ""
