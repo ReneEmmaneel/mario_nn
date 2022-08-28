@@ -252,10 +252,11 @@ function startExperiment()
 		end
 
 		local use_weighted_string = forms.ischecked(form_use_weighted_data_box) and " --use_weighted_dataloader" or ""
+		local hparam_t_string = " -t " .. tonumber(forms.gettext(form_hparam_t_int))
 
 		setup()
-		io.popen("start python.exe watch.py -e " .. experiment_id .. obj_string .. use_weighted_string)
-		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10" .. continue_string .. obj_string .. use_weighted_string)
+		io.popen("start python.exe watch.py -e " .. experiment_id .. obj_string .. use_weighted_string .. hparam_t_string)
+		io.popen("start python.exe train.py --model_path experiments/experiment_" .. experiment_id .. "/models/ --data_path experiments/experiment_" .. experiment_id .. "/data --num_workers 2 --sleep 10" .. continue_string .. obj_string .. use_weighted_string .. hparam_t_string)
 		forms.settext(form_start_button, "Stop")
 		do_run = true
 	else
@@ -269,7 +270,10 @@ function makeForm()
 	form = forms.newform(500, 500, "nn_mario")
 
 	--Create form from bottom to top, because of z-index rendering issues
-	form_start_button = forms.button(form, "Start", startExperiment, 120, 175, 100, 20)
+	form_start_button = forms.button(form, "Start", startExperiment, 120, 200, 100, 20)
+	
+	form_hparam_t_int = forms.textbox(form, "0", 100, 20, "UNSIGNED", 120, 175)
+	form_hparam_t_text = forms.label(form, "use previous n frames", 5, 175)
 	
 	form_use_weighted_data_text = forms.label(form, "Use weighted data", 5, 150)
 	form_use_weighted_data_box = forms.checkbox(form, "", 120, 145)

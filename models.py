@@ -78,7 +78,7 @@ class StupidModel(nn.Module):
         return output
 
 class ResNetModel(nn.Module):
-    def __init__(self, t=4, num_outputs=7, num_blocks=[3,3,3,3], c_hidden=[10,20,40,80], **kwargs):
+    def __init__(self, t=4, num_outputs=7, num_blocks=[3,3,3,3], c_hidden=[16,32,64,128], **kwargs):
         """
         Inputs:
             t - number of previous frames (first layer has (3+8) * t channels)
@@ -162,7 +162,7 @@ class BaseMarioModel(nn.Module):
             if objective in all_objectives.keys():
                 self.outputs += all_objectives[objective]
 
-        self.forwardModel = ResNetModel(t, self.outputs)
+        self.forwardModel = ResNetModel(t=t, num_outputs=self.outputs)
     
     def seperate_output(self, output):
         output_tensors = {}

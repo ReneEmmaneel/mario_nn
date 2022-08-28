@@ -34,6 +34,8 @@ class FileChangeHandler(FileSystemEventHandler):
         self.data_path = data_path
         self.model_checkpoint_folder = model_checkpoint_folder
         self.objectives = args.objectives
+        self.t = args.t
+
         self.latest_model_file = None
         self.iter = 0
         self.dir_name = None
@@ -48,7 +50,7 @@ class FileChangeHandler(FileSystemEventHandler):
         model_file = train.get_latest_model(self.model_checkpoint_folder)
 
         if not model_file == self.latest_model_file and not model_file == None:
-            model_hparams = {"t": 4, "objectives": self.objectives}
+            model_hparams = {"t": self.t, "objectives": self.objectives}
             optimizer_hparams={"lr": 0.1}
 
             self.model = Module(self.objectives, data_path, model_hparams, optimizer_hparams)
@@ -99,7 +101,7 @@ class FileChangeHandler(FileSystemEventHandler):
                             reader = csv.DictReader(state_file_data, delimiter=',')
                             points = []
                             for row in reader:
-                                if id - int(row["id"]) <= 30:
+                                if id - int(row["id"]) <= self.t * 10 - 10:
                                     points.append(row)
                             input["previous_points"] = points
                         input["screenshots"] = [f"{event_dir_name}/screenshot_{point['id']}.png" for point in input["previous_points"]]
@@ -107,7 +109,7 @@ class FileChangeHandler(FileSystemEventHandler):
                     #Add current frame
                     input["screenshots"].append(f"{event_dir_name}/screenshot_{id}.png")
 
-                    next_inputs = train.get_next_input(self.model, input, deterministic=self.iter % 4 >= 2, objectives=self.objectives)
+                    next_inputs = train.get_next_input(self.model, input, deterministic=self.iter % 4 >= 2, objectives=self.objectives, t=self.t)
 
                     add_output_to_file(output_file, id, next_inputs)
                 else:
@@ -129,6 +131,8 @@ if __name__ == "__main__":
     parser.add_argument('-e', '--experiment', type=int, required=True)
     parser.add_argument('-r', '--reload', type=int, default=2)
     parser.add_argument('-o', '--objectives', nargs='+', default=[])
+    parser.add_argument('-t', type=int, default=4,
+                        help='How many frames to look for in the past')
 
     parser.add_argument('--use_weighted_dataloader', action='store_true',
                         help='Use a dataloader weighted to get a balanced amount of x_speed values')

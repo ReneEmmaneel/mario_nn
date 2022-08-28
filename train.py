@@ -73,7 +73,7 @@ class Module(pl.LightningModule):
         while not train_dataloader:
             if not self.dataset:
                 dataset, train_dataloader = dataloader.create_dataloader(
-                        root=self.data_path, batch_size=args.batch_size, num_workers=args.num_workers, weighted= self.use_weighted_dataloader)
+                        root=self.data_path, t=args.t, batch_size=args.batch_size, num_workers=args.num_workers, weighted= self.use_weighted_dataloader)
             else:
                 dataset, train_dataloader = dataloader.update_dataloader(self.dataset,
                         batch_size=args.batch_size, num_workers=args.num_workers, weighted= self.use_weighted_dataloader)
@@ -130,24 +130,26 @@ def get_latest_model(folder_path):
 
     return ckpts[-1]
 
-def get_next_input(module, input, deterministic=True, objectives=['speed', 'death']):
-    screenshot_tensor, previous_actions_tensor = dataloader.input_to_tensors(input["screenshots"], input["previous_points"])
+def get_next_input(module, input, deterministic=True, objectives=['speed', 'death'], t=4):
+    screenshot_tensor, previous_actions_tensor = dataloader.input_to_tensors(input["screenshots"], input["previous_points"], append_screenshots_to=t, append_previous_actions_to=t-1)
 
     #Make batch of size 64 for screenshot tensor
     screenshot_tensor = torch.unsqueeze(screenshot_tensor, 0)
     screenshot_tensor = screenshot_tensor.expand(64, -1, -1, -1, -1)
 
     #Make batch of size 64, with possible actions, for action tensor
-    previous_actions_tensor = torch.unsqueeze(previous_actions_tensor, 0)
-    previous_actions_tensor = previous_actions_tensor.expand(64, -1, -1)
+    if not previous_actions_tensor == None:
+        previous_actions_tensor = torch.unsqueeze(previous_actions_tensor, 0)
+        previous_actions_tensor = previous_actions_tensor.expand(64, -1, -1)
 
     possible_actions = []
     for i in range(64):
         #Try all possible actions using the A,B,X,Y buttons and one of the arrow buttons
         possible_actions.append(torch.tensor([int(i/32)%2==1, int(i/16)%2==1, int(i/8)%2==1, int(i/4)%2==1, i%4==0, i%4==1, i%4==2, i%4==3]))
-    possible_actions_tensor = torch.stack(possible_actions)
-    possible_actions_tensor = torch.unsqueeze(possible_actions_tensor, 1)
-    actions_tensor = torch.cat((previous_actions_tensor, possible_actions_tensor), dim=1)
+    actions_tensor = torch.stack(possible_actions)
+    actions_tensor = torch.unsqueeze(actions_tensor, 1)
+    if not previous_actions_tensor == None:
+        actions_tensor = torch.cat((previous_actions_tensor, actions_tensor), dim=1)
     
     #call model
     try:
@@ -197,7 +199,7 @@ def main(args):
     if len(args.objectives) == 0:
         args.objectives = ['speed', 'death']
 
-    model_hparams = {"t": 4, "objectives": args.objectives}
+    model_hparams = {"t": args.t, "objectives": args.objectives}
     optimizer_hparams={}
 
     if not args.checkpoint and args.continue_from_last:
@@ -249,6 +251,8 @@ if __name__ == '__main__':
                         help='How many devices to use')
     parser.add_argument('-o', '--objectives', nargs='+', default=[],
                         help="Training objectives for the model, seperated by spaces. Leave empty to use all. Possible values: speed, death")
+    parser.add_argument('-t', type=int, default=4,
+                        help='How many frames to look for in the past')
 
     parser.add_argument('--use_weighted_dataloader', action='store_true',
                         help='Use a dataloader weighted to get a balanced amount of x_speed values')

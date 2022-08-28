@@ -110,7 +110,7 @@ class OfflineMarioDataset(Dataset):
                 values_list.append(int(item['future_state']['MarioState'] == '9'))
             return values_list
 
-        data_points = [{'input': input_to_tensors(x['screenshots'], x['previous_points']), 'values': get_values(x)} for x in data_points]
+        data_points = [{'input': input_to_tensors(x['screenshots'], x['previous_points'], append_screenshots_to=self.t, append_previous_actions_to=self.t-1), 'values': get_values(x)} for x in data_points]
         self.data.extend(data_points)
         self.dirs.append(dir_name)
 
@@ -157,7 +157,7 @@ def input_to_tensors(screenshots, previous_points, append_screenshots_to=4, appe
         previous_actions.append(torch.tensor([int(v) for v in previous_action.values()][1:]))
     while len(previous_actions) < append_previous_actions_to:
         previous_actions.insert(0, torch.zeros(8))
-    previous_actions_tensor = torch.stack(previous_actions, dim=0)
+    previous_actions_tensor = torch.stack(previous_actions, dim=0) if len(previous_actions) > 0 else None
     return screenshot_tensor, previous_actions_tensor
 
 def loaders_from_dataset(dataset, batch_size = 32, num_workers=1, weighted=False):
