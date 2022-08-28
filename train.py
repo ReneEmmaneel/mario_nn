@@ -235,7 +235,7 @@ if __name__ == '__main__':
     parser.set_defaults(save_best=False)
 
     # Training parameters
-    parser.add_argument('--batch_size', type=int, default=16,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='batch size used in training and evaluation')
     parser.add_argument('--num_workers', type=int, default=2, #Higher crashes it for some reason, might want to look into it...
                         help='amount of workers for creating the dataloader')

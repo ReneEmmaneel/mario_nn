@@ -78,8 +78,7 @@ end
 
 function setup()
 	--Checks for idling
-	prev_mario_x = nil
-	prev_mario_y = nil
+	max_mario_x = 0
 	idle_time = 0
 	alive = false
 
@@ -178,13 +177,12 @@ function mainLoop()
 				marioX, marioY, marioState = getMarioState()
 
 				--Update idle time
-				if marioX == prev_mario_x and marioY == prev_mario_y then
+				if marioX <= max_mario_x then
 					idle_time = idle_time + 1
 				else
+					max_mario_x = marioX
 					idle_time = 0
 				end
-				prev_mario_x = marioX
-				prev_mario_y = marioY
 
 				--update joystick#
 				lastOutput = readOutputFile()
@@ -194,8 +192,8 @@ function mainLoop()
 
 				id = id + 1
 
-				--If mario is idle for 5 seconds, restart
-				if idle_time > 300 then
+				--If mario is idle for 15 seconds, restart
+				if idle_time > 900 then
 					setup()
 				end
 
