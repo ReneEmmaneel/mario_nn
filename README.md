@@ -19,7 +19,7 @@ Quick and dirty guide how to set it up
 6. Optional: Set some variables in the console popup
 7. Click Start, mario should now jump around, restart the level upon death/idle, and improve over time!
 
-![screenshot of the popup]("Media/popup screenshot.png")
+![screenshot of the popup](Media/popup_screenshot.png)
 * Experiment ID: give ID of experiment to seperate different runs 
 * Continue last model: Set to true if you want to continue 
 * Use weighted data: Use a dataloader weighted to get a balanced amount of x_speed values 
