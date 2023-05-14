@@ -9,7 +9,7 @@ Anyway, still a decent start, and the neural network was able to reliably beat e
 
 # SETUP
 
-Quick and dirty guide how to set it up, some more information can probably be seen in SethBlings guide for his MariFlow setup: ([MariFlow](https://docs.google.com/document/d/1p4ZOtziLmhf0jPbZTTaFxSKdYqE91dYcTNqTVdd6es4/edit#heading=h.syblbftlk25z))
+Quick and dirty guide how to set it up
 
 1. Download BizHawk and put this repository in the Lua folder as a folder named 'mario_nn' 
 2. Download the required python libraries and make sure you can execute `python watch.py`
