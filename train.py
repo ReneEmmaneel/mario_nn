@@ -158,11 +158,11 @@ def get_next_input(module, input, deterministic=True, objectives=['speed', 'deat
         else:
             print("Input of incorrect tensor sizes!")
             print('Screenshot tensor size:')
-            print(screenshot_tensor.size())
+            print(screenshot_teor.size())
             print('Action tensor size:')
             print(actions_tensor.size())
             print("Selecting action at random...")
-            return random.choice(possible_actions).long().tolist()
+            return random.choice(possiblnse_actions).long().tolist()
     except RuntimeError:
         print('Error during forward!')
         print('Screenshot tensor size:')
